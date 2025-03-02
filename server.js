@@ -1,4 +1,3 @@
-// Express.js Backend with PostgreSQL and PostGIS
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -8,13 +7,7 @@ const path = require('path');
 
 const app = express();
 app.use(express.json());
-app.use(cors(
-  {
-    origin: '*',
-    credentials: false,
-  }
-));
-
+app.use(cors({ origin: '*', credentials: false }));
 app.use(morgan('dev'));
 
 // PostgreSQL Connection
@@ -41,44 +34,46 @@ app.get('/', (req, res) => {
   res.send('Welcome to the API');
 });
 
+// Serve MBTiles Tiles
 app.get('/api/tiles/:z/:x/:y.png', (req, res) => {
-  const { z, x, y } = req.params;
+  let { z, x, y } = req.params;
+  z = parseInt(z);
+  x = parseInt(x);
+  y = parseInt(y);
 
   const mbtilesPath = path.join(__dirname, 'storage', 'saudi.mbtiles');
 
-  console.log(`Requesting tile z: ${z}, x: ${x}, y: ${y}`);
-  new MBTiles(mbtilesPath, (err, mbtiles) => {
+  console.log(`Requesting tile - z: ${z}, x: ${x}, y: ${y}`);
+
+  new MBTiles(mbtilesPath + '?mode=ro', (err, mbtiles) => {
     if (err) {
       console.error('Error loading MBTiles file:', err);
-      res.status(500).json({ error: 'Error loading MBTiles file' });
-      return;
+      return res.status(500).json({ error: 'Error loading MBTiles file' });
     }
 
-    mbtiles.getTile(z, x, y, (err, tile) => {
+    mbtiles.getTile(z, x, y, (err, tile, headers) => {
       if (err) {
-        console.error('Tile not found:', err);
-        res.status(404).json({ error: 'Tile not found' });
-        return;
+        console.error(`Tile not found at z:${z}, x:${x}, y:${y}`, err);
+        return res.status(404).json({ error: 'Tile not found' });
       }
 
-      console.log('Tile retrieved successfully');
-      res.setHeader('Content-Type', 'image/png');
+      console.log(`Tile retrieved successfully - z: ${z}, x: ${x}, y: ${y}, Size: ${tile.length} bytes`);
+
+      res.set(headers);
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.send(tile);
-
-      // Log the tile data length to ensure it's being sent
-      console.log(`Tile data length: ${tile.length}`);
     });
   });
 });
 
+
+// Store Areas of Interest (AOI)
 app.post('/api/areas', async (req, res) => {
   const { name, geojson } = req.body;
 
   console.log("Received GeoJSON:", JSON.stringify(geojson, null, 2));
 
   try {
-    // Ensure only the 'geometry' part is stored
     const geometry = geojson.geometry;
     const result = await pool.query(
       'INSERT INTO areas (name, geom) VALUES ($1, ST_GeomFromGeoJSON($2)) RETURNING *',
@@ -100,4 +95,5 @@ app.get('/api/areas', async (req, res) => {
   }
 });
 
+// Start Server
 app.listen(7000, () => console.log('Server running on port 7000'));
