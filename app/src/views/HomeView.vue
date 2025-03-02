@@ -13,7 +13,7 @@ const drawnLayer = ref(null)
 onMounted(() => {
   map = L.map('map').setView([21.58919229802818, 39.20564534600111], 13)
   L.tileLayer('http://localhost:7000/api/tiles/{z}/{x}/{y}.png', {
-    maxZoom: 19,
+    maxZoom: 14,
   }).addTo(map)
   
   map.removeControl(map.attributionControl);

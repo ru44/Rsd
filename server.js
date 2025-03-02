@@ -8,7 +8,12 @@ const path = require('path');
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cors(
+  {
+    origin: '*',
+    credentials: false,
+  }
+));
 
 app.use(morgan('dev'));
 
@@ -58,6 +63,7 @@ app.get('/api/tiles/:z/:x/:y.png', (req, res) => {
 
       console.log('Tile retrieved successfully');
       res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Access-Control-Allow-Origin', '*');
       res.send(tile);
 
       // Log the tile data length to ensure it's being sent
