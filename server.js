@@ -1,99 +1,116 @@
 const express = require('express');
-const { Pool } = require('pg');
 const cors = require('cors');
 const morgan = require('morgan');
-const MBTiles = require('@mapbox/mbtiles');
 const path = require('path');
+const sqlite3 = require('sqlite3').verbose();
 
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: '*', credentials: false }));
+app.use(cors({ origin: '*' }));
 app.use(morgan('dev'));
 
-// PostgreSQL Connection
-const pool = new Pool({
-  user: 'myuser',
-  host: 'localhost',
-  database: 'mydb',
-  password: 'mypassword',
-  port: 5444,
+// Middleware for CORS
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
 });
 
-// Create table for Areas of Interest (AOI)
-(async () => {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS areas (
-      id SERIAL PRIMARY KEY,
-      name TEXT,
-      geom GEOMETRY(POLYGON, 4326)
-    )
-  `);
-})();
-
+// Test API endpoint
 app.get('/', (req, res) => {
-  res.send('Welcome to the API');
+  res.send('Welcome to the MBTiles API');
 });
 
-// Serve MBTiles Tiles
-app.get('/api/tiles/:z/:x/:y.png', (req, res) => {
-  let { z, x, y } = req.params;
-  z = parseInt(z);
-  x = parseInt(x);
-  y = parseInt(y);
+// Path to the MBTiles file
+const mbtilesPath = path.join(__dirname, 'storage', 'test.mbtiles');
 
-  const mbtilesPath = path.join(__dirname, 'storage', 'saudi.mbtiles');
+// ✅ Serve Vector Tiles (PBF format)
+app.get('/api/tiles/:z/:x/:y.pbf', (req, res) => {
+  const { z, x, y } = req.params;
 
-  console.log(`Requesting tile - z: ${z}, x: ${x}, y: ${y}`);
+  // Flip Y to match TMS format
+  const tileY = (1 << z) - 1 - parseInt(y);
 
-  new MBTiles(mbtilesPath + '?mode=ro', (err, mbtiles) => {
+  console.log(`Fetching vector tile: z=${z}, x=${x}, y=${tileY}`);
+
+  const db = new sqlite3.Database(mbtilesPath, sqlite3.OPEN_READONLY, (err) => {
     if (err) {
-      console.error('Error loading MBTiles file:', err);
-      return res.status(500).json({ error: 'Error loading MBTiles file' });
+      console.error('Error opening MBTiles database:', err);
+      return res.status(500).json({ error: 'Error opening MBTiles file' });
     }
+  });
 
-    mbtiles.getTile(z, x, y, (err, tile, headers) => {
-      if (err) {
-        console.error(`Tile not found at z:${z}, x:${x}, y:${y}`, err);
+  db.get(
+    `SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?`,
+    [parseInt(z), parseInt(x), tileY],
+    (err, row) => {
+      if (err || !row) {
+        console.error(`Tile not found at z:${z}, x:${x}, y:${tileY}`, err);
         return res.status(404).json({ error: 'Tile not found' });
       }
 
-      console.log(`Tile retrieved successfully - z: ${z}, x: ${x}, y: ${y}, Size: ${tile.length} bytes`);
+      console.log(`Vector tile retrieved: ${z}/${x}/${y}, size=${row.tile_data.length} bytes`);
 
-      res.set(headers);
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.send(tile);
-    });
-  });
+      // ✅ Set correct content type for vector tiles
+      res.setHeader('Content-Type', 'application/x-protobuf');
+      res.setHeader('Content-Encoding', 'gzip'); // Most vector tiles are compressed
+      res.send(row.tile_data);
+    }
+  );
+
+  db.close();
 });
 
+// ✅ PostgreSQL Connection using Knex.js (for storing geo data)
+const knex = require('knex')({
+  client: 'pg',
+  connection: {
+    host: 'localhost',
+    user: 'myuser',
+    password: 'mypassword',
+    database: 'mydb',
+    port: 5444,
+  },
+});
 
-// Store Areas of Interest (AOI)
+// ✅ Create table for Areas of Interest (AOI)
+knex.schema.hasTable('areas').then((exists) => {
+  if (!exists) {
+    return knex.schema.createTable('areas', (table) => {
+      table.increments('id').primary();
+      table.string('name');
+      table.specificType('geom', 'geometry(POLYGON, 4326)');
+    }).then(() => console.log('Table created successfully'));
+  }
+}).catch(err => console.error('Error creating table:', err));
+
+// ✅ Store Areas of Interest (AOI)
 app.post('/api/areas', async (req, res) => {
   const { name, geojson } = req.body;
-
   console.log("Received GeoJSON:", JSON.stringify(geojson, null, 2));
 
   try {
-    const geometry = geojson.geometry;
-    const result = await pool.query(
-      'INSERT INTO areas (name, geom) VALUES ($1, ST_GeomFromGeoJSON($2)) RETURNING *',
-      [name, JSON.stringify(geometry)]
-    );
-    res.json(result.rows[0]);
+    const result = await knex('areas')
+      .insert({ name, geom: knex.raw('ST_GeomFromGeoJSON(?)', [JSON.stringify(geojson.geometry)]) })
+      .returning('*');
+
+    res.json(result[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Fetch all AOIs
+// ✅ Fetch all AOIs
 app.get('/api/areas', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, name, ST_AsGeoJSON(geom) as geojson FROM areas');
-    res.json(result.rows);
+    const result = await knex('areas').select('id', 'name', knex.raw('ST_AsGeoJSON(geom) as geojson'));
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // Start Server
-app.listen(7000, () => console.log('Server running on port 7000'));
+const PORT = 7000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
