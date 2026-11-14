@@ -1,0 +1,192 @@
+use axum::{ extract::{ State, Json }, response::IntoResponse, http::StatusCode };
+use deadpool_postgres::Pool;
+use serde::{ Deserialize, Serialize };
+use serde_json::json;
+
+/// Struct used to receive symbol input from client (now using SIDC)
+#[derive(Deserialize, Debug)]
+pub struct SymbolInput {
+    pub name: String,
+    pub geojson: serde_json::Value,
+    pub sidc: String,
+}
+
+/// Struct used to return symbol data to client
+#[derive(Serialize, Debug)]
+pub struct SymbolOutput {
+    pub id: i32,
+    pub name: String,
+    pub geojson: serde_json::Value,
+    pub sidc: String,
+}
+
+/// GET /symbols — return all symbols
+pub async fn get_symbols(State(pool): State<Pool>) -> impl IntoResponse {
+    let client = match pool.get().await {
+        Ok(client) => client,
+        Err(e) => {
+            eprintln!("Failed to get DB connection: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "status": "error", "message": format!("Database connection failed: {}", e) }))
+            ).into_response();
+        }
+    };
+
+    let stmt = match
+        client.prepare("SELECT id, name, ST_AsGeoJSON(geom) as geojson, sidc FROM symbols").await
+    {
+        Ok(stmt) => stmt,
+        Err(e) => {
+            eprintln!("Failed to prepare query: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "status": "error", "message": format!("Query preparation failed: {}", e) }))
+            ).into_response();
+        }
+    };
+
+    let rows = match client.query(&stmt, &[]).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            eprintln!("Query execution failed: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "status": "error", "message": format!("Query failed: {}", e) }))
+            ).into_response();
+        }
+    };
+
+    let data: Vec<SymbolOutput> = rows
+        .into_iter()
+        .filter_map(|row| {
+            let geojson_str: String = row.get("geojson");
+            let geojson_value = serde_json::from_str(&geojson_str).ok()?;
+            Some(SymbolOutput {
+                id: row.get("id"),
+                name: row.get("name"),
+                geojson: geojson_value,
+                sidc: row.get("sidc"),
+            })
+        })
+        .collect();
+
+    println!("Retrieved {} symbols from database", data.len());
+    (
+        StatusCode::OK,
+        Json(json!({ "status": "success", "data": data }))
+    ).into_response()
+}
+
+/// POST /symbols — insert new symbol
+pub async fn create_symbol(
+    State(pool): State<Pool>,
+    Json(input): Json<SymbolInput>
+) -> impl IntoResponse {
+    println!("Received symbol creation request: {:?}", input);
+    
+    let client = match pool.get().await {
+        Ok(client) => client,
+        Err(e) => {
+            eprintln!("Failed to get DB connection: {}", e);
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "status": "error", "message": format!("Database connection failed: {}", e) }))
+            ).into_response();
+        }
+    };
+
+    // Validate the input GeoJSON
+    let geojson_str = input.geojson.to_string();
+    println!("GeoJSON to insert: {}", geojson_str);
+    
+    let stmt = match
+        client.prepare(
+            "INSERT INTO symbols (name, geom, sidc) VALUES ($1, ST_GeomFromGeoJSON($2), $3) RETURNING id, name, ST_AsGeoJSON(geom) as geojson, sidc"
+        ).await
+    {
+        Ok(stmt) => stmt,
+        Err(e) => {
+            eprintln!("Failed to prepare insert query: {}", e);
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "status": "error", "message": format!("Query preparation failed: {}", e) }))
+            ).into_response();
+        }
+    };
+
+    let row = match
+        client.query_one(&stmt, &[&input.name, &geojson_str, &input.sidc]).await
+    {
+        Ok(row) => row,
+        Err(e) => {
+            eprintln!("Insert query failed: {}", e);
+            // Check for specific PostGIS errors
+            let error_msg = if e.to_string().contains("invalid GeoJSON") {
+                format!("Invalid GeoJSON format: {}", geojson_str)
+            } else if e.to_string().contains("geometry") {
+                format!("Geometry error: {}", e)
+            } else {
+                format!("Database insert failed: {}", e)
+            };
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(json!({ "status": "error", "message": error_msg }))
+            ).into_response();
+        }
+    };
+
+    let geojson_str: String = row.get("geojson");
+    let geojson_value = match serde_json::from_str(&geojson_str) {
+        Ok(val) => val,
+        Err(e) => {
+            eprintln!("Failed to parse returned GeoJSON: {}", e);
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "status": "error", "message": format!("Invalid GeoJSON returned from database: {}", e) }))
+            ).into_response();
+        }
+    };
+
+    let symbol = SymbolOutput {
+        id: row.get("id"),
+        name: row.get("name"),
+        geojson: geojson_value,
+        sidc: row.get("sidc"),
+    };
+    
+    println!("Symbol created successfully: {:?}", symbol);
+
+    (
+        axum::http::StatusCode::CREATED,
+        Json(json!({ "status": "success", "data": symbol }))
+    ).into_response()
+}
+
+/// DELETE /symbols — delete all symbols
+pub async fn delete_symbols(State(pool): State<Pool>) -> impl IntoResponse {
+    let client = match pool.get().await {
+        Ok(client) => client,
+        Err(e) => {
+            eprintln!("Failed to get DB connection: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "status": "error", "message": format!("Database connection failed: {}", e) }))
+            ).into_response();
+        }
+    };
+
+    if let Err(e) = client.execute("DELETE FROM symbols", &[]).await {
+        eprintln!("Failed to delete symbols: {}", e);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "status": "error", "message": format!("Failed to delete symbols: {}", e) }))
+        ).into_response();
+    }
+
+    println!("All symbols deleted successfully");
+    (
+        StatusCode::OK,
+        Json(json!({ "status": "success", "message": "All symbols removed successfully" }))
+    ).into_response()
+}
