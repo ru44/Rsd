@@ -1,189 +1,123 @@
-// composables/useSymbols.ts
 import { ref } from "vue";
 import axios from "axios";
 import ms from "milsymbol";
-import type maplibregl from "maplibre-gl";
+import * as Cesium from "cesium";
+import { API_URL, useMap, type LonLat } from "./useMap";
 
 interface SymbolRec {
-  id: string; // UUID
-  name: string; // نضع فيه الـ SIDC
-  geojson: string | object;
+  id: number;
+  name: string;
+  sidc: string;
+  geojson: { type: "Point"; coordinates: [number, number] };
+}
+interface Unsaved {
+  entityId: string;
+  sidc: string;
+  coords: [number, number];
 }
 
-const API = "http://localhost:7000/GIS/symbols";
+const API = `${API_URL}/api/symbols`;
 
 const symbols = ref<SymbolRec[]>([]);
-const placedBatch = ref<
-  { sidc: string; imgId: string; coords: [number, number] }[]
->([]); // ← مصفوفة
-let getMap: (() => maplibregl.Map | null) | null = null;
+const unsaved = ref<Unsaved[]>([]);
+/** The symbol code waiting for a map click, or null when not placing. */
+const placing = ref<string | null>(null);
+const error = ref<string | null>(null);
+let hooked = false;
+let seq = 0;
 
-/* -------- Helpers -------- */
-function sidc2img(sidc: string) {
-  const ico = new ms.Symbol(sidc, {
-    size: 50,
-    outlineWidth: 1,
-    symColor: "#007cbf",
+function draw(id: string, sidc: string, [lon, lat]: [number, number]) {
+  const { viewer } = useMap();
+  const v = viewer.value;
+  if (!v || v.entities.getById(id)) return;
+  v.entities.add({
+    id,
+    position: Cesium.Cartesian3.fromDegrees(lon, lat),
+    billboard: {
+      image: new ms.Symbol(sidc, { size: 30 }).asCanvas(),
+      // Keep symbols visible instead of letting the globe clip them.
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+    },
   });
-  return ico.toDataURL();
-}
-function extractSidc(name: string) {
-  return name.startsWith("sym-") ? name.split("-")[1] : name;
 }
 
-export function useSymbols(map?: () => maplibregl.Map | null) {
-  if (map) getMap = map;
+function erase(id: string) {
+  useMap().viewer.value?.entities.removeById(id);
+}
 
-  /* ---------- أضف رمز إلى الخريطة ---------- */
-  function addToMap(sidc: string) {
-    const m = getMap?.();
-    if (!m) return;
+function place(pos: LonLat) {
+  if (!placing.value) return;
+  const entityId = `sym-new-${++seq}`;
+  const coords: [number, number] = [pos.lon, pos.lat];
+  draw(entityId, placing.value, coords);
+  unsaved.value.push({ entityId, sidc: placing.value, coords });
+  placing.value = null;
+}
 
-    const center = m.getCenter();
-    const imgId = `sym-${sidc}-${Date.now()}`;
-    const data64 = sidc2img(sidc);
-
-    const img = new Image();
-    img.onload = () => {
-      const cvs = document.createElement("canvas");
-      cvs.width = img.width;
-      cvs.height = img.height;
-      cvs.getContext("2d")!.drawImage(img, 0, 0);
-      const imgData = cvs
-        .getContext("2d")!
-        .getImageData(0, 0, img.width, img.height);
-      if (!m.hasImage(imgId)) m.addImage(imgId, imgData);
-
-      m.addSource(imgId, {
-        type: "geojson",
-        data: {
-          type: "Feature",
-          geometry: { type: "Point", coordinates: [center.lng, center.lat] },
-        },
-      });
-      m.addLayer({
-        id: imgId,
-        type: "symbol",
-        source: imgId,
-        layout: {
-          "icon-image": imgId,
-          "icon-size": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            5,
-            0.4,
-            10,
-            0.8,
-            14,
-            1.3,
-            18,
-            2,
-          ],
-        },
-      });
-
-      placedBatch.value.push({ sidc, imgId, coords: [center.lng, center.lat] });
-    };
-    img.src = data64;
+export function useSymbols() {
+  if (!hooked) {
+    hooked = true;
+    useMap().onLeftClick(place);
   }
 
-  /* ----------------- API ----------------- */
+  /** Arm the tool: the next click on the map places this symbol. */
+  function addToMap(sidc: string) {
+    placing.value = sidc;
+  }
+  function cancelPlacing() {
+    placing.value = null;
+  }
+
   async function load() {
+    error.value = null;
     try {
       const { data } = await axios.get(API);
       symbols.value = data.data ?? [];
-
-      const m = getMap?.();
-      symbols.value.forEach((s) => {
-        if (!m) return;
-        const layerId = `sym-${s.id}`;
-        if (m.getSource(layerId)) return;
-
-        const sidc = extractSidc(s.name);
-        const data64 = sidc2img(sidc);
-
-        const img = new Image();
-        img.onload = () => {
-          const cvs = document.createElement("canvas");
-          cvs.width = img.width;
-          cvs.height = img.height;
-          cvs.getContext("2d")!.drawImage(img, 0, 0);
-          const imgData = cvs
-            .getContext("2d")!
-            .getImageData(0, 0, img.width, img.height);
-          if (!m.hasImage(layerId)) m.addImage(layerId, imgData);
-
-          const geo =
-            typeof s.geojson === "string" ? JSON.parse(s.geojson) : s.geojson;
-          m.addSource(layerId, { type: "geojson", data: geo });
-          m.addLayer({
-            id: layerId,
-            type: "symbol",
-            source: layerId,
-            layout: {
-              "icon-image": layerId,
-              "icon-size": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                5,
-                0.4,
-                10,
-                0.8,
-                14,
-                1.3,
-                18,
-                2,
-              ],
-            },
-          });
-        };
-        img.src = data64;
-      });
+      symbols.value.forEach((s) => draw(`sym-${s.id}`, s.sidc, s.geojson.coordinates));
     } catch (e) {
-      console.error("Failed to load symbols:", e);
+      error.value = "Could not load symbols (is the backend running?)";
+      console.error(e);
     }
   }
 
   async function save() {
-    if (!placedBatch.value.length) return;
-
-    try {
-      const promises = placedBatch.value.map(async ({ sidc, coords }) => {
-        const payload = {
-          name: sidc, // نحفظ الـ SIDC
-          geojson: { type: "Point", coordinates: coords },
-        };
-        const { data } = await axios.post(API, payload);
-        symbols.value.push({
-          id: data.id,
-          name: data.name,
-          geojson: payload.geojson,
+    error.value = null;
+    // Save one at a time so a failure leaves the rest still marked unsaved.
+    while (unsaved.value.length) {
+      const item = unsaved.value[0];
+      try {
+        const { data } = await axios.post(API, {
+          name: item.sidc,
+          sidc: item.sidc,
+          geojson: { type: "Point", coordinates: item.coords },
         });
-      });
-
-      await Promise.all(promises);
-      placedBatch.value = []; // أفرغ المؤقّت
-    } catch (e) {
-      console.error("Failed to save symbols:", e);
+        const saved: SymbolRec = data.data;
+        erase(item.entityId);
+        draw(`sym-${saved.id}`, saved.sidc, saved.geojson.coordinates);
+        symbols.value.push(saved);
+        unsaved.value.shift();
+      } catch (e) {
+        error.value = "Could not save symbols (is the backend running?)";
+        console.error(e);
+        return;
+      }
     }
   }
 
   async function removeAll() {
+    error.value = null;
     try {
-      const m = getMap?.();
       await axios.delete(API);
-      symbols.value.forEach((s) => {
-        const id = `sym-${s.id}`;
-        if (m?.getLayer(id)) m.removeLayer(id);
-        if (m?.getSource(id)) m.removeSource(id);
-      });
-      symbols.value = [];
     } catch (e) {
-      console.error("Failed to delete symbols:", e);
+      error.value = "Could not remove symbols (is the backend running?)";
+      console.error(e);
+      return;
     }
+    symbols.value.forEach((s) => erase(`sym-${s.id}`));
+    unsaved.value.forEach((u) => erase(u.entityId));
+    symbols.value = [];
+    unsaved.value = [];
   }
 
-  return { symbols, placedBatch, addToMap, load, save, removeAll };
+  return { symbols, unsaved, placing, error, addToMap, cancelPlacing, load, save, removeAll };
 }

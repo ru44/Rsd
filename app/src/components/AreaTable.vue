@@ -6,9 +6,9 @@
       class="flex items-center justify-between"
     >
       <span class="text-gray-700">{{ area.name }}</span>
-      <button @click="onZoom(area)" class="btn-cyan">Go To</button>
+      <button @click="props.onZoom(area)" class="btn-cyan">Go To</button>
     </div>
-    <div v-if="!areas.length" class="text-xs text-gray-400 py-2 text-center">
+    <div v-if="!props.areas.length" class="text-xs text-gray-400 py-2 text-center">
       No saved areas.
     </div>
   </div>
@@ -20,7 +20,6 @@ const props = defineProps<{
 
   onZoom: (area: any) => void;
 }>();
-const { areas, onZoom } = props;
 </script>
 
 <style scoped>
