@@ -10,6 +10,7 @@ import CoordinateBar from "@/components/CoordinateBar.vue";
 import { useMap } from "@/composables/useMap";
 import { useAreas } from "@/composables/useAreas";
 import { useSymbols } from "@/composables/useSymbols";
+import { useMgrsGrid } from "@/composables/useMgrsGrid";
 import { Globe, Heart, Layers, Map, Shield } from "lucide-vue-next";
 
 const { is3D, cameraHeightKm, hasSatellite, toggleMode } = useMap();
@@ -34,11 +35,14 @@ const {
   removeAll: removeSymbols,
 } = useSymbols();
 
+const { visible: gridVisible, attach: attachGrid } = useMgrsGrid();
+
 const error = computed(() => areaError.value ?? symbolError.value);
 
 // Show what is already saved as soon as the map exists. The map is created by
 // MapCanvas, a child, so it is ready by the time this parent mounts.
 onMounted(() => {
+  attachGrid();
   loadAreas();
   loadSymbols();
 });
@@ -89,6 +93,13 @@ function confirmRemoveAll(type: "areas" | "symbols") {
       <p v-if="error" class="-mt-3 rounded bg-red-50 px-3 py-2 text-xs text-red-700">
         {{ error }}
       </p>
+
+      <SidebarSection :icon="Layers" title="Layers">
+        <label class="flex items-center justify-between text-gray-700 font-medium cursor-pointer">
+          <span>MGRS grid</span>
+          <input v-model="gridVisible" type="checkbox" class="h-4 w-4 accent-cyan-600" />
+        </label>
+      </SidebarSection>
 
       <SidebarSection :icon="Shield" title="Map Controls">
         <MapControls
