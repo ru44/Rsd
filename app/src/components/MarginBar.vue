@@ -7,13 +7,21 @@ import { COORD_FORMATS, formatCoord, type CoordFormat } from "@/lib/coords";
 
 // The strip along the bottom edge, like the margin of a printed map sheet:
 // where you are, how far out you are, and whether your work is stored.
-const { cursor, is3D, cameraHeightKm } = useMap();
+const { cursor, is3D, cameraHeightKm, baseMap } = useMap();
 const areas = useAreas();
 const symbols = useSymbols();
 
 const format = ref<CoordFormat>("MGRS");
 const position = computed(() =>
   cursor.value ? formatCoord(cursor.value.lon, cursor.value.lat, format.value) : null
+);
+
+const credit = computed(() =>
+  baseMap.value === "streets"
+    ? "© OpenStreetMap contributors"
+    : baseMap.value === "satellite"
+      ? "satellite tiles from the backend"
+      : "Natural Earth"
 );
 
 const offline = computed(() => areas.offline.value || symbols.offline.value);
@@ -47,7 +55,7 @@ async function retry() {
     <output
       v-if="position"
       aria-label="Position under the pointer"
-      class="whitespace-nowrap font-mono text-base font-bold text-signal"
+      class="select-text whitespace-nowrap font-mono text-base font-bold text-signal"
     >
       {{ position }}
     </output>
@@ -71,7 +79,7 @@ async function retry() {
     </span>
 
     <span class="hidden whitespace-nowrap text-xs text-dim xl:inline">
-      Map engine: CesiumJS. Base map: Natural Earth.
+      Map engine: CesiumJS. Base map: {{ credit }}.
     </span>
   </footer>
 </template>

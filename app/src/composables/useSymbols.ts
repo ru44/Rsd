@@ -4,6 +4,7 @@ import ms from "milsymbol";
 import * as Cesium from "cesium";
 import { API_URL, useMap, type LonLat } from "./useMap";
 import { EDIT_PREFIX, selection } from "./selection";
+import { tool } from "./tool";
 
 export interface SymbolRec {
   id: number;
@@ -41,7 +42,8 @@ let source: Cesium.CustomDataSource | null = null;
 let hooked = false;
 let flushing = false;
 let seq = 0;
-let dragMoved = false;
+/** Entity of the symbol to select as soon as the backend has stored it. */
+let selectWhenSaved: string | null = null;
 
 /** All symbols live in one Cesium layer so they can be shown or hidden together. */
 function layer() {
@@ -115,12 +117,17 @@ async function flush() {
       draw(`sym-${saved.id}`, saved.sidc, saved.geojson.coordinates);
       symbols.value.push(saved);
       unsaved.value.shift();
+      // Straight after placing, the new symbol is selected, ready to adjust.
+      if (selectWhenSaved === item.entityId && tool.value === "select" && !selection.value) {
+        selection.value = { kind: "symbol", id: saved.id };
+      }
     }
     offline.value = false;
   } catch (e) {
     offline.value = true;
     console.error(e);
   } finally {
+    selectWhenSaved = null;
     flushing = false;
   }
 }
@@ -131,7 +138,8 @@ function place(pos: LonLat) {
   const coords: [number, number] = [pos.lon, pos.lat];
   draw(entityId, placing.value.sidc, coords);
   unsaved.value.push({ entityId, ...placing.value, coords });
-  placing.value = null;
+  selectWhenSaved = entityId;
+  tool.value = "select"; // also clears `placing`
   flush();
   return true;
 }
@@ -156,13 +164,11 @@ export function useSymbols() {
     map.onDrag({
       start(_pos, entityId) {
         const s = selected();
-        dragMoved = false;
-        return !!s && (entityId === `sym-${s.id}` || entityId === RING_ID);
+        return tool.value === "select" && !!s && (entityId === `sym-${s.id}` || entityId === RING_ID);
       },
       move(pos) {
         const s = selected();
         if (!s) return;
-        dragMoved = true;
         s.geojson = { type: "Point", coordinates: [pos.lon, pos.lat] };
         const entity = layer()?.entities.getById(`sym-${s.id}`);
         if (entity) {
@@ -171,24 +177,25 @@ export function useSymbols() {
           );
         }
       },
-      end() {
+      end(moved) {
         const s = selected();
-        if (s && dragMoved) push(s.id, { geojson: s.geojson });
+        if (s && moved) push(s.id, { geojson: s.geojson });
       },
     });
     watch(visible, (show) => {
       if (source) source.show = show;
     });
     watch(selection, (sel) => showRing(sel?.kind === "symbol"));
+    // Choosing any other tool puts the symbol down.
+    watch(tool, (t) => {
+      if (t !== "symbol") placing.value = null;
+    });
   }
 
   /** Arm the tool: the next click on the map places this symbol. */
   function arm(sidc: string, name: string) {
-    selection.value = null;
     placing.value = { sidc, name };
-  }
-  function cancelPlacing() {
-    placing.value = null;
+    tool.value = "symbol";
   }
 
   async function load() {
@@ -246,7 +253,6 @@ export function useSymbols() {
     offline,
     visible,
     arm,
-    cancelPlacing,
     load,
     flush,
     update,

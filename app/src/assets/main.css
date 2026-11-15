@@ -21,6 +21,23 @@ body {
   }
 }
 
+/* Scroll bars in the app's own colours instead of the browser's pale ones. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: theme("colors.edge") transparent;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: theme("colors.edge");
+  border-radius: 4px;
+}
+
 :focus-visible {
   outline: 2px solid theme("colors.signal");
   outline-offset: 2px;

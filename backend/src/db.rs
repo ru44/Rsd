@@ -7,12 +7,14 @@ const INIT_SQL: &str =
     -- Creates the PostGIS extension if it's not already enabled
     CREATE EXTENSION IF NOT EXISTS postgis;
 
-    -- Creates the table to store drawn areas (polygons)
+    -- Creates the table to store drawn shapes: polygons, rectangles, circles
+    -- (all stored as polygons) and lines. `shape` says which one it was drawn as.
     CREATE TABLE IF NOT EXISTS areas (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
-        geom GEOMETRY(Polygon, 4326) NOT NULL,
-        color TEXT NULL
+        geom GEOMETRY(Geometry, 4326) NOT NULL,
+        color TEXT NULL,
+        shape TEXT NULL
     );
 
     -- Creates the table to store placed symbols (points)
@@ -61,6 +63,22 @@ const INIT_SQL: &str =
 
     -- Ensure existing installations get the color column if it wasn't present
     ALTER TABLE areas ADD COLUMN IF NOT EXISTS color TEXT;
+    ALTER TABLE areas ADD COLUMN IF NOT EXISTS shape TEXT;
+
+    -- Older installations only allowed polygons; lines are stored here too.
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM geometry_columns
+            WHERE f_table_name = 'areas' AND f_geometry_column = 'geom' AND type <> 'GEOMETRY'
+        ) THEN
+            ALTER TABLE areas ALTER COLUMN geom TYPE GEOMETRY(Geometry, 4326);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'areas_geom_kind') THEN
+            ALTER TABLE areas ADD CONSTRAINT areas_geom_kind
+                CHECK (GeometryType(geom) IN ('POLYGON', 'LINESTRING'));
+        END IF;
+    END $$;
     ALTER TABLE markers ADD COLUMN IF NOT EXISTS color TEXT;
 "#;
 

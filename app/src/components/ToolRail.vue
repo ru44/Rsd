@@ -1,89 +1,117 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
-import { Flag, Globe, Map, Maximize, Pentagon } from "lucide-vue-next";
+import type { Component } from "vue";
+import { Circle, Flag, Globe, Hand, Map, Maximize, MousePointer2, Pentagon, Square, Waypoints } from "lucide-vue-next";
 import { useMap } from "@/composables/useMap";
-import { useAreas } from "@/composables/useAreas";
-import { useSymbols } from "@/composables/useSymbols";
-import SymbolPicker from "./SymbolPicker.vue";
 import { useClearView } from "@/composables/useClearView";
+import { isDrawTool, pickerOpen, tool, type Tool } from "@/composables/tool";
 
 const { is3D, toggleMode } = useMap();
-const { drawing, startDraw, cancelDraw } = useAreas();
-const { placing, arm, cancelPlacing } = useSymbols();
 const { enter: enterClearView } = useClearView();
 
-const paletteOpen = ref(false);
+interface Item {
+  id: Tool;
+  label: string;
+  key: string;
+  icon: Component;
+}
+const MOVE: Item[] = [
+  { id: "hand", label: "Move the map", key: "H", icon: Hand },
+  { id: "select", label: "Select and edit", key: "V", icon: MousePointer2 },
+];
+const DRAW: Item[] = [
+  { id: "rect", label: "Rectangle", key: "R", icon: Square },
+  { id: "circle", label: "Circle", key: "C", icon: Circle },
+  { id: "polygon", label: "Area with any number of corners", key: "P", icon: Pentagon },
+  { id: "line", label: "Line", key: "L", icon: Waypoints },
+];
 
-// Only one tool is active at a time.
-function toggleArea() {
-  paletteOpen.value = false;
-  cancelPlacing();
-  if (drawing.value) cancelDraw();
-  else startDraw();
+// Only one tool is active at a time. Pressing a drawing tool again puts it down.
+function choose(id: Tool) {
+  pickerOpen.value = false;
+  tool.value = isDrawTool(id) && tool.value === id ? "select" : id;
 }
 function toggleSymbols() {
-  cancelDraw();
-  if (placing.value) cancelPlacing();
-  else paletteOpen.value = !paletteOpen.value;
+  if (tool.value === "symbol") {
+    tool.value = "select";
+    return;
+  }
+  if (!pickerOpen.value) tool.value = "select"; // drop whatever was being drawn
+  pickerOpen.value = !pickerOpen.value;
 }
-function pick(sidc: string, name: string) {
-  paletteOpen.value = false;
-  arm(sidc, name);
-}
-
-defineExpose({ closePalette: () => (paletteOpen.value = false) });
-watch(drawing, (on) => on && (paletteOpen.value = false));
 </script>
 
 <template>
-  <div class="flex items-start gap-2">
-    <nav class="panel flex flex-col overflow-hidden" aria-label="Map tools">
-      <button type="button" class="tool" :aria-pressed="drawing" @click="toggleArea">
-        <Pentagon class="h-5 w-5" aria-hidden="true" />
-        Area
-      </button>
+  <nav class="panel flex flex-col" aria-label="Map tools">
+    <template v-for="(group, g) in [MOVE, DRAW]" :key="g">
       <button
+        v-for="t in group"
+        :key="t.id"
         type="button"
         class="tool"
-        :aria-pressed="paletteOpen || !!placing"
-        :aria-expanded="paletteOpen"
-        @click="toggleSymbols"
+        :class="{ 'border-t border-edge': g > 0 && t === group[0] }"
+        :aria-pressed="tool === t.id"
+        :aria-label="t.label"
+        :aria-keyshortcuts="t.key"
+        @click="choose(t.id)"
       >
-        <Flag class="h-5 w-5" aria-hidden="true" />
-        Symbol
+        <component :is="t.icon" class="h-5 w-5" aria-hidden="true" />
+        <span class="key" aria-hidden="true">{{ t.key }}</span>
+        <span class="tip" aria-hidden="true">{{ t.label }}</span>
       </button>
-      <button
-        type="button"
-        class="tool border-t border-edge"
-        :title="is3D ? 'Switch to the flat map' : 'Switch to the globe'"
-        @click="toggleMode"
-      >
-        <component :is="is3D ? Map : Globe" class="h-5 w-5" aria-hidden="true" />
-        {{ is3D ? "Flat" : "Globe" }}
-      </button>
-      <button
-        type="button"
-        class="tool"
-        title="Full screen with no controls (F)"
-        @click="enterClearView"
-      >
-        <Maximize class="h-5 w-5" aria-hidden="true" />
-        Full
-      </button>
-    </nav>
+    </template>
+    <button
+      type="button"
+      class="tool"
+      aria-label="Military symbol"
+      aria-keyshortcuts="S"
+      :aria-pressed="pickerOpen || tool === 'symbol'"
+      :aria-expanded="pickerOpen"
+      @click="toggleSymbols"
+    >
+      <Flag class="h-5 w-5" aria-hidden="true" />
+      <span class="key" aria-hidden="true">S</span>
+      <span class="tip" aria-hidden="true">Military symbol</span>
+    </button>
 
-    <SymbolPicker v-if="paletteOpen" @pick="pick" />
-  </div>
+    <button
+      type="button"
+      class="tool border-t border-edge"
+      :aria-label="is3D ? 'Switch to the flat map' : 'Switch to the globe'"
+      aria-keyshortcuts="G"
+      @click="toggleMode"
+    >
+      <component :is="is3D ? Map : Globe" class="h-5 w-5" aria-hidden="true" />
+      <span class="key" aria-hidden="true">G</span>
+      <span class="tip" aria-hidden="true">{{ is3D ? "Flat map" : "Globe" }}</span>
+    </button>
+    <button type="button" class="tool" aria-label="Full screen with no controls" aria-keyshortcuts="F" @click="enterClearView">
+      <Maximize class="h-5 w-5" aria-hidden="true" />
+      <span class="key" aria-hidden="true">F</span>
+      <span class="tip" aria-hidden="true">Full screen, no controls</span>
+    </button>
+  </nav>
 </template>
 
 <style scoped>
 .tool {
-  @apply flex w-14 flex-col items-center gap-1 px-1 py-2 text-[11px] leading-none text-dim transition-colors;
+  @apply relative flex h-10 w-11 items-center justify-center text-dim transition-colors first:rounded-t last:rounded-b;
 }
 .tool:hover {
   @apply bg-raised text-paper;
 }
 .tool[aria-pressed="true"] {
   @apply bg-signal text-ink;
+}
+/* The key that picks the tool, tucked in the corner. */
+.key {
+  @apply absolute bottom-0.5 right-1 font-mono text-[9px] leading-none opacity-60;
+}
+/* The tool's name, shown beside it on hover or keyboard focus. */
+.tip {
+  @apply pointer-events-none absolute left-full top-1/2 z-30 ml-2 -translate-y-1/2 whitespace-nowrap rounded border border-edge bg-ink px-2 py-1 text-xs text-paper opacity-0 shadow-lg shadow-black/40;
+}
+.tool:hover .tip,
+.tool:focus-visible .tip {
+  @apply opacity-100;
 }
 </style>

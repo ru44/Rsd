@@ -3,51 +3,83 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 import MapCanvas from "@/components/MapCanvas.vue";
 import ToolRail from "@/components/ToolRail.vue";
 import ToolHint from "@/components/ToolHint.vue";
+import FindBox from "@/components/FindBox.vue";
+import SymbolPicker from "@/components/SymbolPicker.vue";
 import LayersPanel from "@/components/LayersPanel.vue";
 import SelectionPanel from "@/components/SelectionPanel.vue";
+import BaseMapSwitch from "@/components/BaseMapSwitch.vue";
 import MarginBar from "@/components/MarginBar.vue";
+import { useMap } from "@/composables/useMap";
 import { useAreas } from "@/composables/useAreas";
 import { useSymbols } from "@/composables/useSymbols";
 import { useMgrsGrid } from "@/composables/useMgrsGrid";
 import { useClearView } from "@/composables/useClearView";
 import { useSelection } from "@/composables/useSelection";
+import { useViewLink } from "@/composables/useViewLink";
+import { pickerOpen, tool, type Tool } from "@/composables/tool";
 
-const { drawing, load: loadAreas, finishDraw, cancelDraw } = useAreas();
-const { placing, load: loadSymbols, cancelPlacing } = useSymbols();
+const { toggleMode } = useMap();
+const areas = useAreas();
+const symbols = useSymbols();
 const { attach: attachGrid } = useMgrsGrid();
 const { clear, hint, exit: exitClearView, toggle: toggleClearView } = useClearView();
 const { selection, deselect } = useSelection();
-const rail = ref<InstanceType<typeof ToolRail> | null>(null);
+const { attach: attachViewLink } = useViewLink();
+const find = ref<InstanceType<typeof FindBox> | null>(null);
+
+const TOOL_KEYS: Record<string, Tool> = { h: "hand", v: "select", r: "rect", c: "circle", p: "polygon", l: "line" };
+
+function pickSymbol(sidc: string, name: string) {
+  pickerOpen.value = false;
+  symbols.arm(sidc, name);
+}
 
 function onKey(e: KeyboardEvent) {
-  // Leave typing alone: the format picker uses letter keys to jump to options.
   const typing = e.target instanceof HTMLElement && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
-  if ((e.key === "f" || e.key === "F") && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+  if (e.key === "Escape") {
+    // Esc backs out of one thing at a time: the full-screen view, the tool
+    // in hand, the text box, then the selection.
+    if (clear.value) exitClearView();
+    else if (pickerOpen.value) pickerOpen.value = false;
+    else if (tool.value !== "select" && tool.value !== "hand") tool.value = "select";
+    else if (typing) (e.target as HTMLElement).blur();
+    else deselect();
+    return;
+  }
+  // Letter keys belong to whatever is being typed in.
+  if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+  const key = e.key.toLowerCase();
+  if (key === "f") {
     toggleClearView();
-  } else if (e.key === "Escape" && clear.value) {
-    exitClearView();
-  } else if (e.key === "Escape") {
-    // Esc backs out of one thing at a time: the tool first, then the selection.
-    if (drawing.value || placing.value) {
-      cancelDraw();
-      cancelPlacing();
-    } else if (typing) {
-      (e.target as HTMLElement).blur();
-    } else {
-      deselect();
-    }
-    rail.value?.closePalette();
-  } else if (e.key === "Enter" && drawing.value) {
-    finishDraw();
+  } else if (clear.value) {
+    return; // nothing else works while the controls are hidden
+  } else if (TOOL_KEYS[key]) {
+    pickerOpen.value = false;
+    tool.value = TOOL_KEYS[key];
+  } else if (key === "s") {
+    tool.value = "select";
+    pickerOpen.value = true;
+    e.preventDefault(); // keep the letter out of the picker's search box
+  } else if (key === "g") {
+    toggleMode();
+  } else if (key === "/") {
+    e.preventDefault();
+    find.value?.focus();
+  } else if (e.key === "Enter") {
+    areas.finishDraw();
+  } else if ((e.key === "Delete" || e.key === "Backspace") && selection.value) {
+    if (selection.value.kind === "area") areas.remove(selection.value.id);
+    else symbols.remove(selection.value.id);
   }
 }
 
 // The map is created by MapCanvas, a child, so it exists by the time this
 // parent mounts: safe to attach layers and show what is already saved.
 onMounted(() => {
+  attachViewLink();
   attachGrid();
-  loadAreas();
-  loadSymbols();
+  areas.load();
+  symbols.load();
   window.addEventListener("keydown", onKey);
 });
 onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
@@ -56,20 +88,26 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 <template>
   <!-- select-none: dragging on the map must not highlight the panels' text. -->
   <div class="relative h-full w-full select-none">
-    <MapCanvas :crosshair="drawing || !!placing" />
+    <MapCanvas />
 
     <!-- Everything below hides in the clear view, leaving only the map. -->
     <template v-if="!clear">
-      <!-- Tools on the left, with the active tool's prompt beside them. -->
-      <div class="pointer-events-none absolute left-3 top-3 z-20 flex flex-wrap items-start gap-2">
-        <ToolRail ref="rail" class="pointer-events-auto" />
-        <ToolHint class="pointer-events-auto" />
+      <!-- Tools down the left edge; beside them the search box, then whatever the active tool needs. -->
+      <div class="pointer-events-none absolute left-3 top-3 z-20 flex items-start gap-2">
+        <ToolRail class="pointer-events-auto" />
+        <div class="flex flex-col items-start gap-2">
+          <FindBox ref="find" class="pointer-events-auto" />
+          <ToolHint class="pointer-events-auto" />
+          <SymbolPicker v-if="pickerOpen" class="pointer-events-auto" @pick="pickSymbol" />
+        </div>
       </div>
 
       <div class="absolute right-3 top-3 z-20 flex max-h-[calc(100%-4.5rem)] flex-col items-end gap-2 overflow-y-auto">
         <LayersPanel />
         <SelectionPanel />
       </div>
+
+      <BaseMapSwitch class="absolute bottom-14 left-3 z-10" />
       <MarginBar class="absolute inset-x-0 bottom-0 z-20" />
     </template>
 

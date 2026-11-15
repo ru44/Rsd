@@ -5,8 +5,9 @@ import { selection } from "@/composables/selection";
 import { AREA_COLORS, useAreas } from "@/composables/useAreas";
 import { symbolImage, useSymbols } from "@/composables/useSymbols";
 import { AFFILIATIONS, getAffiliation, parseSidc, setAffiliation } from "@/lib/sidc";
+import { SHAPE_LABEL, kindOf, measure, pointsOf } from "@/lib/shapes";
 
-// Shows the selected area or symbol and what can be changed about it.
+// Shows the selected shape or symbol and what can be changed about it.
 const areas = useAreas();
 const symbols = useSymbols();
 
@@ -29,6 +30,21 @@ watch(
   { immediate: true }
 );
 const parsedCode = computed(() => parseSidc(code.value));
+// Only complain about a code the person has just typed, never about a stored one.
+const codeRejected = computed(() => !!symbol.value && code.value !== symbol.value.sidc && !parsedCode.value);
+
+const kind = computed(() => (area.value ? kindOf(area.value) : null));
+const title = computed(() => (kind.value ? SHAPE_LABEL[kind.value] : "Symbol"));
+/** The shape's size. Follows the pointer while the shape is being dragged. */
+const size = computed(() =>
+  area.value && kind.value ? areas.liveMeasure.value || measure(kind.value, pointsOf(area.value.geojson)) : ""
+);
+const HELP = {
+  polygon: "Drag a corner to reshape. Drag a small dot to add a corner. Drag inside to move. Right-click a corner to remove it.",
+  line: "Drag a point to reshape. Drag a small dot to add a point. Drag the line to move it. Right-click a point to remove it.",
+  rect: "Drag a corner to resize; hold Shift for a square. Drag inside to move.",
+  circle: "Drag a dot on the edge to resize. Drag inside to move.",
+};
 
 function saveName() {
   const text = name.value.trim();
@@ -52,10 +68,10 @@ function remove() {
 </script>
 
 <template>
-  <section v-if="area || symbol" class="panel w-60 max-w-[calc(100vw-6rem)] text-sm" :aria-label="area ? 'Selected area' : 'Selected symbol'">
+  <section v-if="area || symbol" class="panel w-60 max-w-[calc(100vw-6rem)] text-sm" :aria-label="`Selected ${title.toLowerCase()}`">
     <header class="flex items-center gap-2 border-b border-edge py-1.5 pl-3 pr-1.5 font-bold">
       <img v-if="symbol" :src="symbolImage(symbol.sidc, 16)" alt="" class="max-h-6 max-w-7" />
-      {{ area ? "Area" : "Symbol" }}
+      {{ title }}
       <button type="button" class="ml-auto rounded-sm p-1 text-dim hover:bg-raised hover:text-paper" aria-label="Close" title="Deselect (Esc)" @click="selection = null">
         <X class="h-4 w-4" aria-hidden="true" />
       </button>
@@ -84,10 +100,8 @@ function remove() {
             />
           </div>
         </div>
-        <p class="text-xs leading-relaxed text-dim">
-          Drag a corner to reshape. Drag a small dot to add a corner. Drag inside to move.
-          Right-click a corner to remove it.
-        </p>
+        <p v-if="size" class="font-mono text-signal">{{ size }}</p>
+        <p class="text-xs leading-relaxed text-dim">{{ HELP[kind!] }}</p>
       </template>
 
       <template v-else-if="symbol">
@@ -115,11 +129,11 @@ function remove() {
             type="text"
             spellcheck="false"
             class="field font-mono text-xs"
-            :aria-invalid="!parsedCode"
+            :aria-invalid="codeRejected"
             @blur="saveCode"
             @keydown.enter="($event.target as HTMLInputElement).blur()"
           />
-          <span v-if="!parsedCode" class="mt-1 block text-xs text-hostile">
+          <span v-if="codeRejected" class="mt-1 block text-xs text-hostile">
             Not a symbol code. Use 10 to 15 letters, or 20 or 30 digits.
           </span>
         </label>
@@ -128,7 +142,7 @@ function remove() {
 
       <button type="button" class="flex items-center gap-1.5 rounded-sm border border-edge px-2.5 py-1 text-xs font-bold text-hostile hover:border-hostile" @click="remove">
         <Trash2 class="h-3.5 w-3.5" aria-hidden="true" />
-        {{ area ? "Delete area" : "Delete symbol" }}
+        Delete {{ title.toLowerCase() }}
       </button>
     </div>
   </section>

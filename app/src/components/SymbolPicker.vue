@@ -38,7 +38,7 @@ const rows = computed(() =>
 </script>
 
 <template>
-  <div class="panel flex max-h-[calc(100vh-5.5rem)] w-80 max-w-[calc(100vw-5.5rem)] flex-col text-sm" role="dialog" aria-label="Choose a symbol">
+  <div class="panel flex max-h-[calc(100vh-9.5rem)] w-80 max-w-[calc(100vw-5.5rem)] flex-col text-sm" role="dialog" aria-label="Choose a symbol">
     <div class="space-y-2 border-b border-edge p-2">
       <label class="flex items-center gap-2 rounded-sm border border-edge bg-raised px-2 focus-within:border-signal">
         <Search class="h-4 w-4 shrink-0 text-dim" aria-hidden="true" />

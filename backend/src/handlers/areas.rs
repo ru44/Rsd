@@ -9,6 +9,8 @@ pub struct AreaInput {
     geojson: serde_json::Value,
     // Optional color for the area (e.g. "#00ff00")
     color: Option<String>,
+    // How it was drawn: "polygon", "rect", "circle" or "line".
+    shape: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -17,6 +19,7 @@ pub struct AreaOutput {
     name: String,
     geojson: serde_json::Value,
     color: Option<String>,
+    shape: Option<String>,
 }
 
 // This function is now robust and won't crash the server.
@@ -33,7 +36,7 @@ pub async fn get_areas(State(pool): State<Pool>) -> impl IntoResponse {
     };
 
     let stmt = match
-        client.prepare("SELECT id, name, color, ST_AsGeoJSON(geom) as geojson FROM areas").await
+        client.prepare("SELECT id, name, color, shape, ST_AsGeoJSON(geom) as geojson FROM areas ORDER BY id").await
     {
         Ok(stmt) => stmt,
         Err(err) => {
@@ -63,6 +66,7 @@ pub async fn get_areas(State(pool): State<Pool>) -> impl IntoResponse {
                 id: row.get("id"),
                 name: row.get("name"),
                 color: row.get::<_, Option<String>>("color"),
+        shape: row.get::<_, Option<String>>("shape"),
                 // The geojson is already a JSON object from the previous step, no need to parse again
                 geojson: serde_json
                     ::from_str(row.get::<_, String>("geojson").as_str())
@@ -95,7 +99,7 @@ pub async fn create_area(
 
     let stmt = match
         client.prepare(
-            "INSERT INTO areas (name, geom, color) VALUES ($1, ST_GeomFromGeoJSON($2), $3) RETURNING id, name, color, ST_AsGeoJSON(geom) as geojson"
+            "INSERT INTO areas (name, geom, color, shape) VALUES ($1, ST_GeomFromGeoJSON($2), $3, $4) RETURNING id, name, color, shape, ST_AsGeoJSON(geom) as geojson"
         ).await
     {
         Ok(stmt) => stmt,
@@ -109,7 +113,7 @@ pub async fn create_area(
         }
     };
 
-    let row = match client.query_one(&stmt, &[&input.name, &geojson_str, &input.color]).await {
+    let row = match client.query_one(&stmt, &[&input.name, &geojson_str, &input.color, &input.shape]).await {
         Ok(row) => row,
         Err(e) => {
             // This now catches the "invalid GeoJSON" error and reports it cleanly
@@ -126,6 +130,7 @@ pub async fn create_area(
         id: row.get("id"),
         name: row.get("name"),
         color: row.get::<_, Option<String>>("color"),
+        shape: row.get::<_, Option<String>>("shape"),
         geojson: serde_json::from_str(row.get::<_, String>("geojson").as_str()).unwrap_or_default(),
     };
 
@@ -173,7 +178,7 @@ pub async fn update_area(
             "UPDATE areas SET name = COALESCE($2::varchar, name), \
              geom = COALESCE(ST_GeomFromGeoJSON($3::text), geom), \
              color = COALESCE($4::text, color) \
-             WHERE id = $1 RETURNING id, name, color, ST_AsGeoJSON(geom) as geojson",
+             WHERE id = $1 RETURNING id, name, color, shape, ST_AsGeoJSON(geom) as geojson",
             &[&id, &patch.name, &geojson, &patch.color]
         ).await
     {
@@ -191,6 +196,7 @@ pub async fn update_area(
         id: row.get("id"),
         name: row.get("name"),
         color: row.get::<_, Option<String>>("color"),
+        shape: row.get::<_, Option<String>>("shape"),
         geojson: serde_json::from_str(row.get::<_, String>("geojson").as_str()).unwrap_or_default(),
     };
     (StatusCode::OK, Json(area)).into_response()

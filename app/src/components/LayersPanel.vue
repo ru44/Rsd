@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { ChevronDown, Layers, Trash2 } from "lucide-vue-next";
+import { toGeoJson, toKml } from "@/lib/exporters";
 import { useMap } from "@/composables/useMap";
 import { useAreas } from "@/composables/useAreas";
 import { useSymbols } from "@/composables/useSymbols";
 import { useMgrsGrid } from "@/composables/useMgrsGrid";
 import { selection } from "@/composables/selection";
 
-const { hasSatellite } = useMap();
+const { viewer } = useMap();
 const { visible: gridVisible } = useMgrsGrid();
 const {
   areas,
@@ -30,6 +31,34 @@ const confirming = ref<"areas" | "symbols" | null>(null);
 
 const areaCount = computed(() => areas.value.length + unsavedAreas.value.length);
 const symbolCount = computed(() => symbols.value.length + unsavedSymbols.value.length);
+
+const today = () => new Date().toISOString().slice(0, 10);
+function save(name: string, href: string) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  a.click();
+}
+function saveText(name: string, type: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  save(name, url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function exportGeoJson() {
+  const data = toGeoJson(areas.value, symbols.value);
+  saveText(`rsgis-${today()}.geojson`, "application/geo+json", JSON.stringify(data, null, 2));
+}
+function exportKml() {
+  saveText(`rsgis-${today()}.kml`, "application/vnd.google-earth.kml+xml", toKml(areas.value, symbols.value));
+}
+/** A picture of the map as it looks now, without the controls. */
+function exportImage() {
+  const v = viewer.value;
+  if (!v) return;
+  // The picture must be taken straight after drawing a frame, or it is blank.
+  v.render();
+  save(`rsgis-${today()}.png`, v.canvas.toDataURL("image/png"));
+}
 
 async function removeConfirmed() {
   if (confirming.value === "areas") await removeAreas();
@@ -64,15 +93,15 @@ async function removeConfirmed() {
       <div class="row">
         <label class="flex flex-1 cursor-pointer items-center gap-2.5">
           <input v-model="areasVisible" type="checkbox" class="box" />
-          Areas
+          Shapes
           <span class="text-dim">{{ areaCount }}</span>
         </label>
         <button
           v-if="areaCount"
           type="button"
           class="icon"
-          aria-label="Delete all areas"
-          title="Delete all areas"
+          aria-label="Delete all shapes"
+          title="Delete all shapes"
           @click="confirming = 'areas'"
         >
           <Trash2 class="h-4 w-4" aria-hidden="true" />
@@ -111,7 +140,7 @@ async function removeConfirmed() {
       </div>
 
       <div v-if="confirming" class="mx-2 my-1 rounded-sm bg-raised p-2" role="alertdialog">
-        <p>Delete all {{ confirming }}? This cannot be undone.</p>
+        <p>Delete all {{ confirming === "areas" ? "shapes" : "symbols" }}? This cannot be undone.</p>
         <div class="mt-2 flex gap-2">
           <button type="button" class="rounded-sm bg-hostile px-2.5 py-1 text-xs font-bold text-ink" @click="removeConfirmed">
             Delete all
@@ -122,13 +151,16 @@ async function removeConfirmed() {
         </div>
       </div>
 
-      <p class="mt-1 border-t border-edge px-3 pb-1 pt-2 text-xs text-dim">
-        <template v-if="hasSatellite">Base map: satellite tiles from the backend.</template>
-        <template v-else>
-          Base map: built-in world map. Add <code class="font-mono">satellite.mbtiles</code> to the
-          backend's storage folder for imagery.
-        </template>
-      </p>
+      <div class="mt-1 flex items-center gap-1.5 border-t border-edge px-3 pb-1.5 pt-2.5 text-xs">
+        <span class="mr-auto text-dim">Export</span>
+        <button type="button" class="export" :disabled="!areaCount && !symbolCount" title="Shapes and symbols as GeoJSON" @click="exportGeoJson">
+          GeoJSON
+        </button>
+        <button type="button" class="export" :disabled="!areaCount && !symbolCount" title="Shapes and symbols as KML, for Google Earth" @click="exportKml">
+          KML
+        </button>
+        <button type="button" class="export" title="A picture of the map as it looks now" @click="exportImage">Image</button>
+      </div>
     </div>
   </section>
 </template>
@@ -145,5 +177,14 @@ async function removeConfirmed() {
 }
 .icon:hover {
   @apply bg-raised text-hostile;
+}
+.export {
+  @apply rounded-sm border border-edge px-2 py-1 font-bold text-paper;
+}
+.export:hover:not(:disabled) {
+  @apply border-signal text-signal;
+}
+.export:disabled {
+  @apply cursor-not-allowed opacity-40;
 }
 </style>
