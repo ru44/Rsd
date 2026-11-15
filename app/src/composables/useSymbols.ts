@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import axios from "axios";
 import ms from "milsymbol";
 import * as Cesium from "cesium";
@@ -16,21 +16,55 @@ interface Unsaved {
   coords: [number, number];
 }
 
+/** The symbols offered in the palette, as MIL-STD-2525C codes. */
+export const SYMBOL_PALETTE = [
+  { sidc: "SFGPUCI----K", label: "Infantry" },
+  { sidc: "SFGPEWRH---L", label: "Electronic warfare" },
+  { sidc: "SHGPUCFRMS--G", label: "Mechanized infantry" },
+  { sidc: "SHGPUAAA---G", label: "Anti-aircraft" },
+  { sidc: "SFGPUCVG---K", label: "Reconnaissance" },
+];
+
+export function symbolLabel(sidc: string) {
+  return SYMBOL_PALETTE.find((s) => s.sidc === sidc)?.label ?? sidc;
+}
+
+/** A picture of the symbol for buttons and lists. */
+export function symbolImage(sidc: string, size = 22) {
+  return new ms.Symbol(sidc, { size }).toDataURL();
+}
+
 const API = `${API_URL}/api/symbols`;
 
 const symbols = ref<SymbolRec[]>([]);
+/** Placed but not yet stored, because the backend could not be reached. */
 const unsaved = ref<Unsaved[]>([]);
 /** The symbol code waiting for a map click, or null when not placing. */
 const placing = ref<string | null>(null);
-const error = ref<string | null>(null);
+const offline = ref(false);
+const visible = ref(true);
+
+let source: Cesium.CustomDataSource | null = null;
 let hooked = false;
+let flushing = false;
 let seq = 0;
 
+/** All symbols live in one Cesium layer so they can be shown or hidden together. */
+function layer() {
+  const v = useMap().viewer.value;
+  if (!v) return null;
+  if (!source) {
+    source = new Cesium.CustomDataSource("symbols");
+    source.show = visible.value;
+    v.dataSources.add(source);
+  }
+  return source;
+}
+
 function draw(id: string, sidc: string, [lon, lat]: [number, number]) {
-  const { viewer } = useMap();
-  const v = viewer.value;
-  if (!v || v.entities.getById(id)) return;
-  v.entities.add({
+  const entities = layer()?.entities;
+  if (!entities || entities.getById(id)) return;
+  entities.add({
     id,
     position: Cesium.Cartesian3.fromDegrees(lon, lat),
     billboard: {
@@ -41,8 +75,31 @@ function draw(id: string, sidc: string, [lon, lat]: [number, number]) {
   });
 }
 
-function erase(id: string) {
-  useMap().viewer.value?.entities.removeById(id);
+/** Stores everything still unsaved, oldest first. Stops at the first failure. */
+async function flush() {
+  if (flushing) return;
+  flushing = true;
+  try {
+    while (unsaved.value.length) {
+      const item = unsaved.value[0];
+      const { data } = await axios.post(API, {
+        name: item.sidc,
+        sidc: item.sidc,
+        geojson: { type: "Point", coordinates: item.coords },
+      });
+      const saved: SymbolRec = data.data;
+      layer()?.entities.removeById(item.entityId);
+      draw(`sym-${saved.id}`, saved.sidc, saved.geojson.coordinates);
+      symbols.value.push(saved);
+      unsaved.value.shift();
+    }
+    offline.value = false;
+  } catch (e) {
+    offline.value = true;
+    console.error(e);
+  } finally {
+    flushing = false;
+  }
 }
 
 function place(pos: LonLat) {
@@ -52,16 +109,20 @@ function place(pos: LonLat) {
   draw(entityId, placing.value, coords);
   unsaved.value.push({ entityId, sidc: placing.value, coords });
   placing.value = null;
+  flush();
 }
 
 export function useSymbols() {
   if (!hooked) {
     hooked = true;
     useMap().onLeftClick(place);
+    watch(visible, (show) => {
+      if (source) source.show = show;
+    });
   }
 
   /** Arm the tool: the next click on the map places this symbol. */
-  function addToMap(sidc: string) {
+  function arm(sidc: string) {
     placing.value = sidc;
   }
   function cancelPlacing() {
@@ -69,55 +130,29 @@ export function useSymbols() {
   }
 
   async function load() {
-    error.value = null;
     try {
       const { data } = await axios.get(API);
       symbols.value = data.data ?? [];
       symbols.value.forEach((s) => draw(`sym-${s.id}`, s.sidc, s.geojson.coordinates));
+      offline.value = false;
     } catch (e) {
-      error.value = "Could not load symbols (is the backend running?)";
+      offline.value = true;
       console.error(e);
-    }
-  }
-
-  async function save() {
-    error.value = null;
-    // Save one at a time so a failure leaves the rest still marked unsaved.
-    while (unsaved.value.length) {
-      const item = unsaved.value[0];
-      try {
-        const { data } = await axios.post(API, {
-          name: item.sidc,
-          sidc: item.sidc,
-          geojson: { type: "Point", coordinates: item.coords },
-        });
-        const saved: SymbolRec = data.data;
-        erase(item.entityId);
-        draw(`sym-${saved.id}`, saved.sidc, saved.geojson.coordinates);
-        symbols.value.push(saved);
-        unsaved.value.shift();
-      } catch (e) {
-        error.value = "Could not save symbols (is the backend running?)";
-        console.error(e);
-        return;
-      }
     }
   }
 
   async function removeAll() {
-    error.value = null;
     try {
       await axios.delete(API);
     } catch (e) {
-      error.value = "Could not remove symbols (is the backend running?)";
+      offline.value = true;
       console.error(e);
       return;
     }
-    symbols.value.forEach((s) => erase(`sym-${s.id}`));
-    unsaved.value.forEach((u) => erase(u.entityId));
+    layer()?.entities.removeAll();
     symbols.value = [];
     unsaved.value = [];
   }
 
-  return { symbols, unsaved, placing, error, addToMap, cancelPlacing, load, save, removeAll };
+  return { symbols, unsaved, placing, offline, visible, arm, cancelPlacing, load, flush, removeAll };
 }

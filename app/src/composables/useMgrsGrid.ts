@@ -3,18 +3,25 @@ import * as Cesium from "cesium";
 import { useMap } from "./useMap";
 import { buildGrid, pickLevel, type Level, type Rect } from "@/lib/mgrsGrid";
 
-// Look of each grid level: zones, 100 km, 10 km, 1 km.
-const STYLE: Record<Level, { color: Cesium.Color; width: number; font: string }> = {
-  0: { color: Cesium.Color.YELLOW, width: 2.5, font: "bold 15px sans-serif" },
-  1: { color: Cesium.Color.WHITE, width: 1.8, font: "bold 14px sans-serif" },
-  2: { color: Cesium.Color.fromCssColorString("#7dd3fc"), width: 1.4, font: "bold 13px sans-serif" },
-  3: { color: Cesium.Color.fromCssColorString("#e2e8f0"), width: 1, font: "bold 12px sans-serif" },
+const PAPER = Cesium.Color.fromCssColorString("#E8E4D8");
+const SIGNAL = Cesium.Color.fromCssColorString("#F2B441");
+
+// Look of each grid level: zones, 100 km, 10 km, 1 km. Like a printed map,
+// the grid is one colour and finer lines are simply lighter.
+const STYLE: Record<Level, { line: Cesium.Color; text: Cesium.Color; width: number; font: string }> = {
+  0: { line: SIGNAL.withAlpha(0.85), text: SIGNAL, width: 1.6, font: "bold 14px B612, sans-serif" },
+  1: { line: PAPER.withAlpha(0.85), text: PAPER, width: 1.3, font: "bold 13px B612, sans-serif" },
+  2: { line: PAPER.withAlpha(0.55), text: PAPER, width: 1, font: "12px B612, sans-serif" },
+  3: { line: PAPER.withAlpha(0.35), text: PAPER, width: 1, font: "11px B612, sans-serif" },
 };
 const REDRAW_EVERY_MS = 150;
+/** Eye altitude (globe) or view width (flat map) under which zone names fit. */
+const ZONE_NAMES_BELOW_M = 13_000_000;
 
 const visible = ref(true);
 let lines: Cesium.PolylineCollection | null = null;
 let labels: Cesium.LabelCollection | null = null;
+let fontsReady = false;
 let lastDraw = 0;
 let pending: ReturnType<typeof setTimeout> | null = null;
 
@@ -64,7 +71,7 @@ function viewRects(v: Cesium.Viewer): Rect[] {
 
 function draw() {
   const v = useMap().viewer.value;
-  if (!v || !lines || !labels) return;
+  if (!v || !lines || !labels || !fontsReady) return;
   lastDraw = Date.now();
   lines.removeAll();
   labels.removeAll();
@@ -74,15 +81,26 @@ function draw() {
   if (rects.length === 0) return;
   // Both halves of a date-line view use the same level of detail.
   const level = Math.min(...rects.map((r) => pickLevel(r))) as Level;
+  // Zone names depend on how big a zone is on screen, which the camera knows
+  // better than the view rectangle does (on the globe it reaches the horizon).
+  const metres = v.scene.mode === Cesium.SceneMode.SCENE2D
+    ? v.camera.getMagnitude()
+    : v.camera.positionCartographic.height;
+  const zoneNames = metres < ZONE_NAMES_BELOW_M;
+  // On the globe, names near the edge are squeezed into a pile. They are also
+  // the farthest from the eye, so a distance cut-off drops exactly those.
+  const nearOnly = v.scene.mode === Cesium.SceneMode.SCENE3D
+    ? new Cesium.DistanceDisplayCondition(0, metres * 1.45)
+    : undefined;
   for (const rect of rects) {
-    const grid = buildGrid(rect, level);
+    const grid = buildGrid(rect, level, zoneNames);
     for (const line of grid.lines) {
       lines.add({
         positions: Cesium.Cartesian3.fromDegreesArray(line.points.flat()),
         width: STYLE[line.level].width,
         // One material per line: Cesium destroys a line's material when the
         // line is removed, so a shared one would break on the next redraw.
-        material: Cesium.Material.fromType("Color", { color: STYLE[line.level].color }),
+        material: Cesium.Material.fromType("Color", { color: STYLE[line.level].line }),
       });
     }
     for (const label of grid.labels) {
@@ -91,12 +109,13 @@ function draw() {
         position: Cesium.Cartesian3.fromDegrees(label.lon, label.lat),
         text: label.text,
         font: style.font,
-        fillColor: style.color,
+        fillColor: style.text,
         outlineColor: Cesium.Color.BLACK,
         outlineWidth: 3,
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
         horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
         verticalOrigin: Cesium.VerticalOrigin.CENTER,
+        distanceDisplayCondition: label.level === 0 ? nearOnly : undefined,
       });
     }
   }
@@ -124,7 +143,14 @@ export function useMgrsGrid() {
     v.camera.moveEnd.addEventListener(schedule);
     v.scene.morphComplete.addEventListener(schedule);
     watch(visible, draw);
-    draw();
+    // Cesium caches label glyphs, so wait for the font or the first labels
+    // would be stuck in the fallback face.
+    Promise.all([document.fonts.load("bold 14px B612"), document.fonts.load("12px B612")])
+      .catch(() => {})
+      .then(() => {
+        fontsReady = true;
+        draw();
+      });
   }
 
   return { visible, attach };

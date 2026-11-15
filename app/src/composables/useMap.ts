@@ -64,6 +64,9 @@ export function useMap() {
 
     const v = new Cesium.Viewer(containerId, {
       baseLayer,
+      // Cesium's logo strip is parked off-screen; the margin bar credits the
+      // map engine and the base map in text instead.
+      creditContainer: document.createElement("div"),
       // Everything below would either call an online service or duplicate
       // controls the app draws itself.
       baseLayerPicker: false,

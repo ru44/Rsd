@@ -269,13 +269,16 @@ function squareLines(
   }
 }
 
-/** The whole grid for one view rectangle. */
-export function buildGrid(view: Rect, level: Level = pickLevel(view)): Grid {
+/**
+ * The whole grid for one view rectangle.
+ * `zoneNames` forces zone names ("37Q") on or off; left out, they appear when
+ * few enough zones are in view to be readable.
+ */
+export function buildGrid(view: Rect, level: Level = pickLevel(view), zoneNames?: boolean): Grid {
   const grid: Grid = { level, lines: [], labels: [] };
   const cells = gzdCells(view);
-  // Zone names ("37Q") are shown only while zones are the finest thing drawn
-  // and few enough are in view to be readable.
-  const labelZones = level === 0 && cells.length <= MAX_LABELLED_ZONES;
+  // Zone names are shown only while zones are the finest thing drawn.
+  const labelZones = level === 0 && (zoneNames ?? cells.length <= MAX_LABELLED_ZONES);
 
   for (const cell of cells) {
     zoneOutline(cell, view, grid);
