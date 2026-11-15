@@ -29,6 +29,9 @@ importers:
       mgrs:
         specifier: ^2.2.0
         version: 2.2.0
+      mil-std-2525:
+        specifier: ^0.2.8
+        version: 0.2.8
       milsymbol:
         specifier: ^3.0.2
         version: 3.0.2
@@ -1578,6 +1581,9 @@ packages:
   micromatch@4.0.8:
     resolution: {integrity: sha512-PXwfBhYu0hBCPw8Dn0E+WDYb7af3dSLVWKi3HGv84IdF4TyFoC0ysxFd0Goxw7nSv4T/PzEJQxsYsEiFCKo2BA==}
     engines: {node: '>=8.6'}
+
+  mil-std-2525@0.2.8:
+    resolution: {integrity: sha512-DAPfpAdUm0PyVSi50ScjROgrdloUtw6HFpTEu6ljnK3Bw4GLLjTYNlKdram9+tR1Hq7COkI0R4OMaZAA2/++5Q==}
 
   milsymbol@3.0.2:
     resolution: {integrity: sha512-iYHfum8GCVRpmaRVsRDbw5ZOPY0td3Ltl5+w63caxA2iecS0o1alDnUFUSKaf+Tn8LmA0eUEcSglWR0sLgIDQw==}
@@ -4370,6 +4376,8 @@ snapshots:
     dependencies:
       braces: 3.0.3
       picomatch: 2.3.1
+
+  mil-std-2525@0.2.8: {}
 
   milsymbol@3.0.2: {}
 

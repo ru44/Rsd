@@ -4,16 +4,19 @@ import MapCanvas from "@/components/MapCanvas.vue";
 import ToolRail from "@/components/ToolRail.vue";
 import ToolHint from "@/components/ToolHint.vue";
 import LayersPanel from "@/components/LayersPanel.vue";
+import SelectionPanel from "@/components/SelectionPanel.vue";
 import MarginBar from "@/components/MarginBar.vue";
 import { useAreas } from "@/composables/useAreas";
 import { useSymbols } from "@/composables/useSymbols";
 import { useMgrsGrid } from "@/composables/useMgrsGrid";
 import { useClearView } from "@/composables/useClearView";
+import { useSelection } from "@/composables/useSelection";
 
 const { drawing, load: loadAreas, finishDraw, cancelDraw } = useAreas();
 const { placing, load: loadSymbols, cancelPlacing } = useSymbols();
 const { attach: attachGrid } = useMgrsGrid();
 const { clear, hint, exit: exitClearView, toggle: toggleClearView } = useClearView();
+const { selection, deselect } = useSelection();
 const rail = ref<InstanceType<typeof ToolRail> | null>(null);
 
 function onKey(e: KeyboardEvent) {
@@ -24,8 +27,15 @@ function onKey(e: KeyboardEvent) {
   } else if (e.key === "Escape" && clear.value) {
     exitClearView();
   } else if (e.key === "Escape") {
-    cancelDraw();
-    cancelPlacing();
+    // Esc backs out of one thing at a time: the tool first, then the selection.
+    if (drawing.value || placing.value) {
+      cancelDraw();
+      cancelPlacing();
+    } else if (typing) {
+      (e.target as HTMLElement).blur();
+    } else {
+      deselect();
+    }
     rail.value?.closePalette();
   } else if (e.key === "Enter" && drawing.value) {
     finishDraw();
@@ -44,7 +54,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 </script>
 
 <template>
-  <div class="relative h-full w-full">
+  <!-- select-none: dragging on the map must not highlight the panels' text. -->
+  <div class="relative h-full w-full select-none">
     <MapCanvas :crosshair="drawing || !!placing" />
 
     <!-- Everything below hides in the clear view, leaving only the map. -->
@@ -55,7 +66,10 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
         <ToolHint class="pointer-events-auto" />
       </div>
 
-      <LayersPanel class="absolute right-3 top-3 z-20" />
+      <div class="absolute right-3 top-3 z-20 flex max-h-[calc(100%-4.5rem)] flex-col items-end gap-2 overflow-y-auto">
+        <LayersPanel />
+        <SelectionPanel />
+      </div>
       <MarginBar class="absolute inset-x-0 bottom-0 z-20" />
     </template>
 

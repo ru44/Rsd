@@ -5,6 +5,7 @@ import { useMap } from "@/composables/useMap";
 import { useAreas } from "@/composables/useAreas";
 import { useSymbols } from "@/composables/useSymbols";
 import { useMgrsGrid } from "@/composables/useMgrsGrid";
+import { selection } from "@/composables/selection";
 
 const { hasSatellite } = useMap();
 const { visible: gridVisible } = useMgrsGrid();
@@ -13,7 +14,7 @@ const {
   unsaved: unsavedAreas,
   visible: areasVisible,
   removeAll: removeAreas,
-  zoomTo,
+  goTo,
 } = useAreas();
 const {
   symbols,
@@ -82,8 +83,9 @@ async function removeConfirmed() {
           <button
             type="button"
             class="w-full truncate py-1 pl-10 pr-3 text-left text-dim hover:bg-raised hover:text-paper"
-            :title="`Go to ${a.name}`"
-            @click="zoomTo(a)"
+            :class="{ 'bg-raised text-signal': selection?.kind === 'area' && selection.id === a.id }"
+            :title="`Select ${a.name} and go to it`"
+            @click="goTo(a)"
           >
             {{ a.name }}
           </button>

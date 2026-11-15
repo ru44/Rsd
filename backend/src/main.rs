@@ -1,14 +1,14 @@
 mod handlers;
 mod db;
 
-use axum::{ routing::get, response::Html, Router };
+use axum::{ routing::{ get, put }, response::Html, Router };
 use tower_http::cors::CorsLayer;
 use dotenvy::dotenv;
 
 use handlers::{
     tiles::{get_raster_tile, get_vector_tile},
-    areas::{ get_areas, create_area, delete_areas },
-    symbols::{ get_symbols, create_symbol, delete_symbols },
+    areas::{ get_areas, create_area, delete_areas, update_area, delete_area },
+    symbols::{ get_symbols, create_symbol, delete_symbols, update_symbol, delete_symbol },
     markers::{ get_markers, create_marker, delete_markers },
 };
 
@@ -26,6 +26,9 @@ async fn main() {
         // Keep existing API routes
         .route("/api/areas", get(get_areas).post(create_area).delete(delete_areas))
         .route("/api/symbols", get(get_symbols).post(create_symbol).delete(delete_symbols))
+        // One item: change it or remove it
+        .route("/api/areas/{id}", put(update_area).delete(delete_area))
+        .route("/api/symbols/{id}", put(update_symbol).delete(delete_symbol))
         .route("/api/markers", get(get_markers).post(create_marker).delete(delete_markers))
         .with_state(db_pool)
         .layer(CorsLayer::very_permissive());

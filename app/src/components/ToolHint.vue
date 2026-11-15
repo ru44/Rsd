@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useAreas } from "@/composables/useAreas";
-import { symbolLabel, useSymbols } from "@/composables/useSymbols";
+import { useSymbols } from "@/composables/useSymbols";
 
 // Says what the active tool expects next, with its finish and cancel actions.
 const { drawing, pointCount, finishDraw, cancelDraw } = useAreas();
@@ -29,7 +29,7 @@ const drawText = computed(() => {
       <button type="button" class="act text-dim hover:text-paper" @click="cancelDraw">Cancel</button>
     </template>
     <template v-else-if="placing">
-      <span>Click the map to place {{ symbolLabel(placing).toLowerCase() }}.</span>
+      <span>Click the map to place {{ placing.name.toLowerCase() }}.</span>
       <button type="button" class="act text-dim hover:text-paper" @click="cancelPlacing">Cancel</button>
     </template>
   </div>

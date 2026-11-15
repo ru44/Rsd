@@ -190,3 +190,71 @@ pub async fn delete_symbols(State(pool): State<Pool>) -> impl IntoResponse {
         Json(json!({ "status": "success", "message": "All symbols removed successfully" }))
     ).into_response()
 }
+
+/// Fields a client may change on a symbol. Anything left out stays as it is.
+#[derive(Deserialize)]
+pub struct SymbolPatch {
+    name: Option<String>,
+    geojson: Option<serde_json::Value>,
+    sidc: Option<String>,
+}
+
+fn error(status: StatusCode, message: String) -> axum::response::Response {
+    (status, Json(json!({ "status": "error", "message": message }))).into_response()
+}
+
+/// PUT /api/symbols/{id}: move one symbol or change its name or code.
+pub async fn update_symbol(
+    State(pool): State<Pool>,
+    axum::extract::Path(id): axum::extract::Path<i32>,
+    Json(patch): Json<SymbolPatch>
+) -> axum::response::Response {
+    let client = match pool.get().await {
+        Ok(client) => client,
+        Err(e) => {
+            return error(StatusCode::INTERNAL_SERVER_ERROR, format!("Database connection failed: {}", e));
+        }
+    };
+
+    // A NULL parameter leaves its column untouched.
+    let geojson = patch.geojson.map(|g| g.to_string());
+    let row = match
+        client.query_opt(
+            "UPDATE symbols SET name = COALESCE($2::varchar, name), \
+             geom = COALESCE(ST_GeomFromGeoJSON($3::text), geom), \
+             sidc = COALESCE($4::varchar, sidc) \
+             WHERE id = $1 RETURNING id, name, ST_AsGeoJSON(geom) as geojson, sidc",
+            &[&id, &patch.name, &geojson, &patch.sidc]
+        ).await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => return error(StatusCode::NOT_FOUND, format!("No symbol with id {}", id)),
+        Err(e) => return error(StatusCode::BAD_REQUEST, format!("Failed to update symbol: {}", e)),
+    };
+
+    let symbol = SymbolOutput {
+        id: row.get("id"),
+        name: row.get("name"),
+        geojson: serde_json::from_str(row.get::<_, String>("geojson").as_str()).unwrap_or_default(),
+        sidc: row.get("sidc"),
+    };
+    (StatusCode::OK, Json(json!({ "status": "success", "data": symbol }))).into_response()
+}
+
+/// DELETE /api/symbols/{id}: remove one symbol.
+pub async fn delete_symbol(
+    State(pool): State<Pool>,
+    axum::extract::Path(id): axum::extract::Path<i32>
+) -> axum::response::Response {
+    let client = match pool.get().await {
+        Ok(client) => client,
+        Err(e) => {
+            return error(StatusCode::INTERNAL_SERVER_ERROR, format!("Database connection failed: {}", e));
+        }
+    };
+    match client.execute("DELETE FROM symbols WHERE id = $1", &[&id]).await {
+        Ok(0) => error(StatusCode::NOT_FOUND, format!("No symbol with id {}", id)),
+        Ok(_) => (StatusCode::OK, Json(json!({ "status": "success" }))).into_response(),
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to delete symbol: {}", e)),
+    }
+}

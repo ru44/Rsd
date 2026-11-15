@@ -140,3 +140,76 @@ pub async fn delete_areas(State(pool): State<Pool>) -> impl IntoResponse {
         Json(json!({ "status": "success", "message": "All AOIs removed successfully" })),
     )
 }
+
+/// Fields a client may change on an area. Anything left out stays as it is.
+#[derive(Deserialize)]
+pub struct AreaPatch {
+    name: Option<String>,
+    geojson: Option<serde_json::Value>,
+    color: Option<String>,
+}
+
+fn error(status: StatusCode, message: String) -> axum::response::Response {
+    (status, Json(json!({ "status": "error", "message": message }))).into_response()
+}
+
+/// PUT /api/areas/{id}: change one area's name, shape or colour.
+pub async fn update_area(
+    State(pool): State<Pool>,
+    axum::extract::Path(id): axum::extract::Path<i32>,
+    Json(patch): Json<AreaPatch>
+) -> axum::response::Response {
+    let client = match pool.get().await {
+        Ok(client) => client,
+        Err(e) => {
+            return error(StatusCode::INTERNAL_SERVER_ERROR, format!("Database connection error: {}", e));
+        }
+    };
+
+    // A NULL parameter leaves its column untouched.
+    let geojson = patch.geojson.map(|g| g.to_string());
+    let row = match
+        client.query_opt(
+            "UPDATE areas SET name = COALESCE($2::varchar, name), \
+             geom = COALESCE(ST_GeomFromGeoJSON($3::text), geom), \
+             color = COALESCE($4::text, color) \
+             WHERE id = $1 RETURNING id, name, color, ST_AsGeoJSON(geom) as geojson",
+            &[&id, &patch.name, &geojson, &patch.color]
+        ).await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => return error(StatusCode::NOT_FOUND, format!("No area with id {}", id)),
+        Err(e) => {
+            return error(
+                StatusCode::BAD_REQUEST,
+                format!("Failed to update area. Check GeoJSON format. Details: {}", e)
+            );
+        }
+    };
+
+    let area = AreaOutput {
+        id: row.get("id"),
+        name: row.get("name"),
+        color: row.get::<_, Option<String>>("color"),
+        geojson: serde_json::from_str(row.get::<_, String>("geojson").as_str()).unwrap_or_default(),
+    };
+    (StatusCode::OK, Json(area)).into_response()
+}
+
+/// DELETE /api/areas/{id}: remove one area.
+pub async fn delete_area(
+    State(pool): State<Pool>,
+    axum::extract::Path(id): axum::extract::Path<i32>
+) -> axum::response::Response {
+    let client = match pool.get().await {
+        Ok(client) => client,
+        Err(e) => {
+            return error(StatusCode::INTERNAL_SERVER_ERROR, format!("Database connection error: {}", e));
+        }
+    };
+    match client.execute("DELETE FROM areas WHERE id = $1", &[&id]).await {
+        Ok(0) => error(StatusCode::NOT_FOUND, format!("No area with id {}", id)),
+        Ok(_) => (StatusCode::OK, Json(json!({ "status": "success" }))).into_response(),
+        Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to delete area: {}", e)),
+    }
+}

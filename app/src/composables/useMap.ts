@@ -9,7 +9,14 @@ export interface LonLat {
   lon: number;
   lat: number;
 }
-type MapClick = (pos: LonLat) => void;
+/** `entityId` is the map object under the pointer, if any. Return true to claim the click. */
+type MapClick = (pos: LonLat, entityId: string | null) => boolean | void;
+/** A press-move-release gesture on the map. `start` returns true to take it. */
+export interface DragHandler {
+  start(pos: LonLat, entityId: string | null): boolean;
+  move(pos: LonLat): void;
+  end(): void;
+}
 
 // The viewer must never be made deeply reactive: Vue proxies break Cesium.
 const viewer = shallowRef<Cesium.Viewer | null>(null);
@@ -18,8 +25,12 @@ const cursor = ref<LonLat | null>(null);
 const cameraHeightKm = ref(0);
 const hasSatellite = ref(false);
 
-const leftClickListeners = new Set<MapClick>();
-const rightClickListeners = new Set<() => void>();
+const leftClickListeners: MapClick[] = [];
+const rightClickListeners: MapClick[] = [];
+/** Runs only when no other listener claimed the click (used for selecting). */
+let unclaimedClick: MapClick | null = null;
+const dragHandlers: DragHandler[] = [];
+let activeDrag: DragHandler | null = null;
 
 function pick(v: Cesium.Viewer, screen: Cesium.Cartesian2): LonLat | null {
   const cart = v.camera.pickEllipsoid(screen, v.scene.globe.ellipsoid);
@@ -29,6 +40,11 @@ function pick(v: Cesium.Viewer, screen: Cesium.Cartesian2): LonLat | null {
     lon: Cesium.Math.toDegrees(c.longitude),
     lat: Cesium.Math.toDegrees(c.latitude),
   };
+}
+
+function pickEntityId(v: Cesium.Viewer, screen: Cesium.Cartesian2): string | null {
+  const picked = v.scene.pick(screen);
+  return picked?.id instanceof Cesium.Entity ? picked.id.id : null;
 }
 
 /** Adds the backend's satellite tiles on top of the built-in map, if served. */
@@ -106,16 +122,44 @@ export function useMap() {
     updateHeight();
 
     const input = new Cesium.ScreenSpaceEventHandler(v.scene.canvas);
+    const Type = Cesium.ScreenSpaceEventType;
+
     input.setInputAction((e: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
-      cursor.value = pick(v, e.endPosition);
-    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+      const pos = pick(v, e.endPosition);
+      cursor.value = pos;
+      if (activeDrag && pos) activeDrag.move(pos);
+    }, Type.MOUSE_MOVE);
+
     input.setInputAction((e: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
       const pos = pick(v, e.position);
-      if (pos) leftClickListeners.forEach((fn) => fn(pos));
-    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+      if (!pos) return;
+      const id = pickEntityId(v, e.position);
+      for (const fn of leftClickListeners) if (fn(pos, id) === true) return;
+      unclaimedClick?.(pos, id);
+    }, Type.LEFT_CLICK);
+
+    input.setInputAction((e: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      const pos = pick(v, e.position);
+      if (!pos) return;
+      const id = pickEntityId(v, e.position);
+      for (const fn of rightClickListeners) if (fn(pos, id) === true) return;
+    }, Type.RIGHT_CLICK);
+
+    // Dragging a map object: the camera is frozen while a handler owns the drag.
+    input.setInputAction((e: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      const pos = pick(v, e.position);
+      if (!pos || dragHandlers.length === 0) return;
+      const id = pickEntityId(v, e.position);
+      activeDrag = dragHandlers.find((h) => h.start(pos, id)) ?? null;
+      if (activeDrag) v.scene.screenSpaceCameraController.enableInputs = false;
+    }, Type.LEFT_DOWN);
+
     input.setInputAction(() => {
-      rightClickListeners.forEach((fn) => fn());
-    }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
+      if (!activeDrag) return;
+      activeDrag.end();
+      activeDrag = null;
+      v.scene.screenSpaceCameraController.enableInputs = true;
+    }, Type.LEFT_UP);
 
     viewer.value = v;
     addSatelliteLayer(v);
@@ -129,16 +173,6 @@ export function useMap() {
     else v.scene.morphTo2D(0.8);
   }
 
-  /** Subscribe to map clicks. Returns a function that unsubscribes. */
-  function onLeftClick(fn: MapClick) {
-    leftClickListeners.add(fn);
-    return () => leftClickListeners.delete(fn);
-  }
-  function onRightClick(fn: () => void) {
-    rightClickListeners.add(fn);
-    return () => rightClickListeners.delete(fn);
-  }
-
   return {
     viewer,
     is3D,
@@ -147,7 +181,9 @@ export function useMap() {
     hasSatellite,
     init,
     toggleMode,
-    onLeftClick,
-    onRightClick,
+    onLeftClick: (fn: MapClick) => void leftClickListeners.push(fn),
+    onRightClick: (fn: MapClick) => void rightClickListeners.push(fn),
+    onUnclaimedClick: (fn: MapClick) => void (unclaimedClick = fn),
+    onDrag: (handler: DragHandler) => void dragHandlers.push(handler),
   };
 }

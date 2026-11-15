@@ -3,7 +3,8 @@ import { ref, watch } from "vue";
 import { Flag, Globe, Map, Maximize, Pentagon } from "lucide-vue-next";
 import { useMap } from "@/composables/useMap";
 import { useAreas } from "@/composables/useAreas";
-import { SYMBOL_PALETTE, symbolImage, useSymbols } from "@/composables/useSymbols";
+import { useSymbols } from "@/composables/useSymbols";
+import SymbolPicker from "./SymbolPicker.vue";
 import { useClearView } from "@/composables/useClearView";
 
 const { is3D, toggleMode } = useMap();
@@ -12,7 +13,6 @@ const { placing, arm, cancelPlacing } = useSymbols();
 const { enter: enterClearView } = useClearView();
 
 const paletteOpen = ref(false);
-const palette = SYMBOL_PALETTE.map((s) => ({ ...s, image: symbolImage(s.sidc) }));
 
 // Only one tool is active at a time.
 function toggleArea() {
@@ -26,9 +26,9 @@ function toggleSymbols() {
   if (placing.value) cancelPlacing();
   else paletteOpen.value = !paletteOpen.value;
 }
-function pick(sidc: string) {
+function pick(sidc: string, name: string) {
   paletteOpen.value = false;
-  arm(sidc);
+  arm(sidc, name);
 }
 
 defineExpose({ closePalette: () => (paletteOpen.value = false) });
@@ -72,21 +72,7 @@ watch(drawing, (on) => on && (paletteOpen.value = false));
       </button>
     </nav>
 
-    <div v-if="paletteOpen" class="panel w-56 p-1" role="menu" aria-label="Symbols">
-      <button
-        v-for="s in palette"
-        :key="s.sidc"
-        type="button"
-        role="menuitem"
-        class="flex w-full items-center gap-3 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-raised"
-        @click="pick(s.sidc)"
-      >
-        <span class="flex h-8 w-9 shrink-0 items-center justify-center">
-          <img :src="s.image" alt="" class="max-h-8 max-w-9" />
-        </span>
-        {{ s.label }}
-      </button>
-    </div>
+    <SymbolPicker v-if="paletteOpen" @pick="pick" />
   </div>
 </template>
 
