@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import { Flag, Globe, Map, Pentagon } from "lucide-vue-next";
+import { Flag, Globe, Map, Maximize, Pentagon } from "lucide-vue-next";
 import { useMap } from "@/composables/useMap";
 import { useAreas } from "@/composables/useAreas";
 import { SYMBOL_PALETTE, symbolImage, useSymbols } from "@/composables/useSymbols";
+import { useClearView } from "@/composables/useClearView";
 
 const { is3D, toggleMode } = useMap();
 const { drawing, startDraw, cancelDraw } = useAreas();
 const { placing, arm, cancelPlacing } = useSymbols();
+const { enter: enterClearView } = useClearView();
 
 const paletteOpen = ref(false);
 const palette = SYMBOL_PALETTE.map((s) => ({ ...s, image: symbolImage(s.sidc) }));
@@ -58,6 +60,15 @@ watch(drawing, (on) => on && (paletteOpen.value = false));
       >
         <component :is="is3D ? Map : Globe" class="h-5 w-5" aria-hidden="true" />
         {{ is3D ? "Flat" : "Globe" }}
+      </button>
+      <button
+        type="button"
+        class="tool"
+        title="Full screen with no controls (F)"
+        @click="enterClearView"
+      >
+        <Maximize class="h-5 w-5" aria-hidden="true" />
+        Full
       </button>
     </nav>
 
