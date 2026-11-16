@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, type Component } from "vue";
+import { computed, nextTick, ref, watch, type Component } from "vue";
 import * as Cesium from "cesium";
 import { Check, Crosshair, Flag, MapPin, Search, Share2, Shapes, X } from "lucide-vue-next";
 import { useMap } from "@/composables/useMap";
@@ -16,7 +16,7 @@ import { SHAPE_LABEL, kindOf } from "@/lib/shapes";
 // Find a place three ways: type a position in any format, the name of
 // something already on the map, or the name of a city. Nothing here needs
 // the internet: the list of cities ships with the app.
-const { viewer, flyTo, cameraHeightKm } = useMap();
+const { viewer, flyTo, cameraHeightKm, pressed } = useMap();
 const { areas, goTo } = useAreas();
 const { symbols } = useSymbols();
 const { copy } = useViewLink();
@@ -37,6 +37,8 @@ const active = ref(0);
 const placesReady = ref(false);
 const placesFailed = ref(false);
 const copied = ref(false);
+/** Shrunk to a search icon until it is wanted, and again once the map is in use. */
+const wide = ref(false);
 const field = ref<HTMLInputElement | null>(null);
 
 function ensurePlaces() {
@@ -56,17 +58,17 @@ function showPin(lon: number, lat: number, label: string) {
     position: Cesium.Cartesian3.fromDegrees(lon, lat),
     point: {
       pixelSize: 12,
-      color: Cesium.Color.fromCssColorString("#F2B441"),
-      outlineColor: Cesium.Color.fromCssColorString("#14202B"),
+      color: Cesium.Color.fromCssColorString("#FAFAFA"),
+      outlineColor: Cesium.Color.fromCssColorString("#09090B"),
       outlineWidth: 3,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     },
     label: {
       text: label,
-      font: "bold 13px B612, sans-serif",
-      fillColor: Cesium.Color.fromCssColorString("#E8E4D8"),
+      font: "500 13px 'Geist Variable', sans-serif",
+      fillColor: Cesium.Color.fromCssColorString("#FAFAFA"),
       showBackground: true,
-      backgroundColor: Cesium.Color.fromCssColorString("#14202B").withAlpha(0.9),
+      backgroundColor: Cesium.Color.fromCssColorString("#09090B").withAlpha(0.9),
       backgroundPadding: new Cesium.Cartesian2(7, 5),
       verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
       pixelOffset: new Cesium.Cartesian2(0, -14),
@@ -157,22 +159,36 @@ function clear() {
 }
 function onFocusOut(e: FocusEvent) {
   // Close the list once focus has left the whole box, not when it moves inside it.
-  if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) open.value = false;
+  if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) return;
+  open.value = false;
+  if (!query.value) wide.value = false;
 }
+function focus() {
+  wide.value = true;
+  nextTick(() => field.value?.focus());
+}
+// Working on the map puts the box away, unless it is holding a search.
+watch(pressed, (down) => {
+  if (down && !query.value) wide.value = false;
+});
 
 async function share() {
   copied.value = await copy();
   if (copied.value) setTimeout(() => (copied.value = false), 2000);
 }
 
-defineExpose({ focus: () => field.value?.focus() });
+defineExpose({ focus });
 </script>
 
 <template>
-  <div class="panel w-72 max-w-[calc(100vw-5rem)] text-sm" role="search" @focusout="onFocusOut">
-    <div class="flex items-center">
-      <Search class="ml-2.5 h-4 w-4 shrink-0 text-dim" aria-hidden="true" />
+  <div class="panel max-w-[calc(100vw-4.5rem)] text-sm" :class="wide ? 'w-72' : ''" role="search" @focusout="onFocusOut">
+    <div class="flex items-center gap-0.5 p-1">
+      <!-- Always present: taking the button away mid-click would count as leaving the box and shut it again. -->
+      <button type="button" class="icon-btn" :tabindex="wide ? -1 : 0" aria-label="Find a place or coordinates" title="Find a place ( / )" @click="focus">
+        <Search class="h-4 w-4" aria-hidden="true" />
+      </button>
       <input
+        v-if="wide"
         ref="field"
         v-model="query"
         type="text"
@@ -184,20 +200,20 @@ defineExpose({ focus: () => field.value?.focus() });
         aria-autocomplete="list"
         :aria-expanded="open && results.length > 0"
         placeholder="Find a place or coordinates"
-        class="min-w-0 flex-1 select-text bg-transparent px-2 py-2 text-paper placeholder:text-dim focus:outline-none"
+        class="h-8 min-w-0 flex-1 select-text bg-transparent px-1 text-paper placeholder:text-dim focus:outline-none"
         @focus="(open = true), ensurePlaces()"
         @input="open = true"
         @keydown.down.prevent="step(1)"
         @keydown.up.prevent="step(-1)"
         @keydown.enter.prevent="choose(results[active])"
       />
-      <button v-if="query" type="button" class="side" aria-label="Clear the search" title="Clear" @click="clear">
+      <button v-if="wide && query" type="button" class="icon-btn" aria-label="Clear the search" title="Clear" @click="clear">
         <X class="h-4 w-4" aria-hidden="true" />
       </button>
       <button
         type="button"
-        class="side border-l border-edge"
-        :class="{ done: copied }"
+        class="icon-btn"
+        :class="{ 'text-paper': copied }"
         aria-label="Copy a link to this view"
         :title="copied ? 'Link copied' : 'Copy a link to this view'"
         @click="share"
@@ -208,13 +224,13 @@ defineExpose({ focus: () => field.value?.focus() });
     </div>
 
     <template v-if="open">
-      <ul v-if="results.length" id="find-results" role="listbox" class="max-h-80 overflow-y-auto border-t border-edge py-1">
+      <ul v-if="results.length" id="find-results" role="listbox" class="max-h-80 overflow-y-auto border-t border-edge p-1">
         <li v-for="(r, i) in results" :key="r.key" role="option" :aria-selected="i === active">
           <!-- mousedown.prevent keeps focus in the box, so the list does not close before the click lands -->
           <button
             type="button"
             tabindex="-1"
-            class="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left"
+            class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left"
             :class="i === active ? 'bg-raised' : ''"
             @mousedown.prevent
             @mousemove="active = i"
@@ -242,14 +258,3 @@ defineExpose({ focus: () => field.value?.focus() });
   </div>
 </template>
 
-<style scoped>
-.side {
-  @apply flex h-9 w-9 shrink-0 items-center justify-center text-dim;
-}
-.side:hover {
-  @apply text-paper;
-}
-.side.done {
-  @apply text-signal;
-}
-</style>

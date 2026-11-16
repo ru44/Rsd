@@ -5,8 +5,8 @@ import { useAreas } from "@/composables/useAreas";
 import { useSymbols } from "@/composables/useSymbols";
 import { COORD_FORMATS, formatCoord, type CoordFormat } from "@/lib/coords";
 
-// The strip along the bottom edge, like the margin of a printed map sheet:
-// where you are, how far out you are, and whether your work is stored.
+// Along the bottom edge: where the pointer is, how far out the view is, and
+// whether the work is stored.
 const { cursor, is3D, cameraHeightKm, baseMap } = useMap();
 const areas = useAreas();
 const symbols = useSymbols();
@@ -39,47 +39,29 @@ async function retry() {
 </script>
 
 <template>
-  <footer
-    class="flex h-11 items-center gap-3 border-t border-edge bg-ink/95 px-3 text-sm backdrop-blur-sm sm:gap-4"
-  >
-    <span class="hidden font-bold sm:inline">rsGIS</span>
+  <footer class="flex min-w-0 items-end gap-2 text-xs">
+    <div class="panel flex h-10 min-w-0 items-center gap-2 pl-1 pr-3">
+      <select v-model="format" aria-label="Coordinate format" class="h-8 rounded-md bg-transparent px-1.5 text-dim hover:bg-raised hover:text-paper">
+        <option v-for="f in COORD_FORMATS" :key="f" :value="f" class="bg-ink text-paper">{{ f }}</option>
+      </select>
+      <output v-if="position" aria-label="Position under the pointer" class="select-text truncate whitespace-nowrap font-mono text-sm text-paper">
+        {{ position }}
+      </output>
+      <span v-else class="truncate text-dim">Point at the map</span>
+    </div>
 
-    <select
-      v-model="format"
-      aria-label="Coordinate format"
-      class="rounded-sm border border-edge bg-raised px-1.5 py-1 text-xs text-paper"
-    >
-      <option v-for="f in COORD_FORMATS" :key="f" :value="f">{{ f }}</option>
-    </select>
-
-    <output
-      v-if="position"
-      aria-label="Position under the pointer"
-      class="select-text whitespace-nowrap font-mono text-base font-bold text-signal"
-    >
-      {{ position }}
-    </output>
-    <span v-else class="truncate text-dim">Point at the map for a position</span>
-
-    <span class="ml-auto hidden whitespace-nowrap text-dim md:inline">
-      {{ is3D ? "Eye altitude" : "View width" }}
-      <span class="tabular-nums text-paper">{{ cameraHeightKm.toLocaleString() }} km</span>
-    </span>
-
-    <span v-if="offline" class="flex items-center gap-2 whitespace-nowrap text-hostile" role="alert">
+    <div v-if="offline" class="panel flex h-10 items-center gap-2 whitespace-nowrap pl-3 pr-1 text-hostile" role="alert">
       <span class="hidden lg:inline">{{ syncText }}</span>
       <span class="lg:hidden">Offline</span>
-      <button
-        type="button"
-        class="rounded-sm border border-hostile px-2 py-0.5 text-xs font-bold hover:bg-hostile hover:text-ink"
-        @click="retry"
-      >
-        Retry
-      </button>
-    </span>
+      <button type="button" class="h-8 rounded-md border border-edge px-2.5 font-medium text-paper hover:bg-raised" @click="retry">Retry</button>
+    </div>
 
-    <span class="hidden whitespace-nowrap text-xs text-dim xl:inline">
-      Map engine: CesiumJS. Base map: {{ credit }}.
-    </span>
+    <div class="panel ml-auto hidden h-10 items-center gap-3 whitespace-nowrap px-3 text-dim md:flex">
+      <span>
+        {{ is3D ? "Eye altitude" : "View width" }}
+        <span class="font-mono tabular-nums text-paper">{{ cameraHeightKm.toLocaleString() }} km</span>
+      </span>
+      <span class="hidden border-l border-edge pl-3 xl:inline">CesiumJS · {{ credit }}</span>
+    </div>
   </footer>
 </template>

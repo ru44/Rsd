@@ -1,9 +1,7 @@
 import "./cesiumBase";
 // Fonts are bundled from node_modules, so they work offline.
-import "@fontsource/b612/400.css";
-import "@fontsource/b612/700.css";
-import "@fontsource/b612-mono/400.css";
-import "@fontsource/b612-mono/700.css";
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import "@/assets/main.css";
 
 import { createApp } from "vue";

@@ -40,7 +40,7 @@ const rows = computed(() =>
 <template>
   <div class="panel flex max-h-[calc(100vh-9.5rem)] w-80 max-w-[calc(100vw-5.5rem)] flex-col text-sm" role="dialog" aria-label="Choose a symbol">
     <div class="space-y-2 border-b border-edge p-2">
-      <label class="flex items-center gap-2 rounded-sm border border-edge bg-raised px-2 focus-within:border-signal">
+      <label class="flex items-center gap-2 rounded-md border border-edge bg-raised px-2 focus-within:border-dim">
         <Search class="h-4 w-4 shrink-0 text-dim" aria-hidden="true" />
         <input
           ref="field"
@@ -72,7 +72,7 @@ const rows = computed(() =>
         v-if="!query.trim()"
         v-model="category"
         aria-label="Category"
-        class="w-full rounded-sm border border-edge bg-raised px-2 py-1.5 text-paper"
+        class="w-full rounded-md border border-edge bg-raised px-2 py-1.5 text-paper"
       >
         <option v-for="c in CATEGORIES" :key="c.key" :value="c.key">{{ c.label }}</option>
       </select>
@@ -90,12 +90,12 @@ const rows = computed(() =>
         </div>
       </div>
       <div class="mt-3 flex flex-wrap gap-2">
-        <button type="button" class="rounded-sm bg-signal px-2.5 py-1 text-xs font-bold text-ink" @click="emit('pick', pasted.sidc, 'Symbol ' + pasted.sidc)">
+        <button type="button" class="rounded-md bg-signal px-2.5 py-1 text-xs font-medium text-ink" @click="emit('pick', pasted.sidc, 'Symbol ' + pasted.sidc)">
           Place as written
         </button>
         <button
           type="button"
-          class="rounded-sm border border-edge px-2.5 py-1 text-xs font-bold text-paper hover:bg-raised"
+          class="rounded-md border border-edge px-2.5 py-1 text-xs font-medium text-paper hover:bg-raised"
           @click="emit('pick', setAffiliation(pasted.sidc, affiliation), 'Symbol ' + pasted.sidc)"
         >
           Place as {{ AFFILIATIONS.find((a) => a.key === affiliation)?.label.toLowerCase() }}
@@ -108,7 +108,7 @@ const rows = computed(() =>
         <li v-for="s in rows" :key="s.template">
           <button
             type="button"
-            class="flex w-full items-center gap-3 rounded-sm px-2 py-1 text-left hover:bg-raised"
+            class="flex w-full items-center gap-3 rounded-md px-2 py-1 text-left hover:bg-raised"
             @click="emit('pick', s.sidc, s.name)"
           >
             <span class="flex h-10 w-11 shrink-0 items-center justify-center">
@@ -137,7 +137,7 @@ const rows = computed(() =>
 
 <style scoped>
 .choice {
-  @apply flex items-center justify-center gap-1.5 rounded-sm border border-edge px-1 py-1 text-xs text-dim;
+  @apply flex items-center justify-center gap-1.5 rounded-md border border-edge px-1 py-1 text-xs text-dim;
 }
 .choice:hover {
   @apply text-paper;

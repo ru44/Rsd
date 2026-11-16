@@ -3,16 +3,16 @@ import * as Cesium from "cesium";
 import { useMap } from "./useMap";
 import { buildGrid, pickLevel, type Level, type Rect } from "@/lib/mgrsGrid";
 
-const PAPER = Cesium.Color.fromCssColorString("#E8E4D8");
+const PAPER = Cesium.Color.fromCssColorString("#FAFAFA");
 const SIGNAL = Cesium.Color.fromCssColorString("#F2B441");
 
 // Look of each grid level: zones, 100 km, 10 km, 1 km. Like a printed map,
 // the grid is one colour and finer lines are simply lighter.
 const STYLE: Record<Level, { line: Cesium.Color; text: Cesium.Color; width: number; font: string }> = {
-  0: { line: SIGNAL.withAlpha(0.85), text: SIGNAL, width: 1.6, font: "bold 14px B612, sans-serif" },
-  1: { line: PAPER.withAlpha(0.85), text: PAPER, width: 1.3, font: "bold 13px B612, sans-serif" },
-  2: { line: PAPER.withAlpha(0.55), text: PAPER, width: 1, font: "12px B612, sans-serif" },
-  3: { line: PAPER.withAlpha(0.35), text: PAPER, width: 1, font: "11px B612, sans-serif" },
+  0: { line: SIGNAL.withAlpha(0.7), text: SIGNAL, width: 1.2, font: "600 13px 'Geist Variable', sans-serif" },
+  1: { line: PAPER.withAlpha(0.8), text: PAPER, width: 1.1, font: "600 12px 'Geist Variable', sans-serif" },
+  2: { line: PAPER.withAlpha(0.55), text: PAPER, width: 1, font: "12px 'Geist Variable', sans-serif" },
+  3: { line: PAPER.withAlpha(0.35), text: PAPER, width: 1, font: "11px 'Geist Variable', sans-serif" },
 };
 const REDRAW_EVERY_MS = 150;
 /** Eye altitude (globe) or view width (flat map) under which zone names fit. */
@@ -111,7 +111,7 @@ function draw() {
         font: style.font,
         fillColor: style.text,
         outlineColor: Cesium.Color.BLACK,
-        outlineWidth: 3,
+        outlineWidth: 2,
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
         horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
         verticalOrigin: Cesium.VerticalOrigin.CENTER,
@@ -145,7 +145,7 @@ export function useMgrsGrid() {
     watch(visible, draw);
     // Cesium caches label glyphs, so wait for the font or the first labels
     // would be stuck in the fallback face.
-    Promise.all([document.fonts.load("bold 14px B612"), document.fonts.load("12px B612")])
+    Promise.all([document.fonts.load("600 13px 'Geist Variable'"), document.fonts.load("12px 'Geist Variable'")])
       .catch(() => {})
       .then(() => {
         fontsReady = true;

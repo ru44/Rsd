@@ -41,86 +41,75 @@ function toggleSymbols() {
 </script>
 
 <template>
-  <nav class="panel flex flex-col" aria-label="Map tools">
+  <nav class="panel flex flex-col gap-0.5 p-1" aria-label="Map tools">
     <template v-for="(group, g) in [MOVE, DRAW]" :key="g">
+      <hr v-if="g > 0" class="rule" />
       <button
         v-for="t in group"
         :key="t.id"
         type="button"
-        class="tool"
-        :class="{ 'border-t border-edge': g > 0 && t === group[0] }"
+        class="icon-btn tool"
         :aria-pressed="tool === t.id"
         :aria-label="t.label"
         :aria-keyshortcuts="t.key"
         @click="choose(t.id)"
       >
-        <component :is="t.icon" class="h-5 w-5" aria-hidden="true" />
-        <span class="key" aria-hidden="true">{{ t.key }}</span>
-        <span class="tip" aria-hidden="true">{{ t.label }}</span>
+        <component :is="t.icon" class="h-4 w-4" aria-hidden="true" />
+        <span class="tip" aria-hidden="true">{{ t.label }} <kbd class="kbd">{{ t.key }}</kbd></span>
       </button>
     </template>
     <button
       type="button"
-      class="tool"
+      class="icon-btn tool"
       aria-label="Military symbol"
       aria-keyshortcuts="S"
       :aria-pressed="pickerOpen || tool === 'symbol'"
       :aria-expanded="pickerOpen"
       @click="toggleSymbols"
     >
-      <Flag class="h-5 w-5" aria-hidden="true" />
-      <span class="key" aria-hidden="true">S</span>
-      <span class="tip" aria-hidden="true">Military symbol</span>
+      <Flag class="h-4 w-4" aria-hidden="true" />
+      <span class="tip" aria-hidden="true">Military symbol <kbd class="kbd">S</kbd></span>
     </button>
     <button
       type="button"
-      class="tool"
+      class="icon-btn tool"
       aria-label="Measure distance"
       aria-keyshortcuts="M"
       :aria-pressed="tool === 'ruler'"
       @click="choose('ruler')"
     >
-      <Ruler class="h-5 w-5" aria-hidden="true" />
-      <span class="key" aria-hidden="true">M</span>
-      <span class="tip" aria-hidden="true">Measure distance</span>
+      <Ruler class="h-4 w-4" aria-hidden="true" />
+      <span class="tip" aria-hidden="true">Measure distance <kbd class="kbd">M</kbd></span>
     </button>
 
+    <hr class="rule" />
     <button
       type="button"
-      class="tool border-t border-edge"
+      class="icon-btn tool"
       :aria-label="is3D ? 'Switch to the flat map' : 'Switch to the globe'"
       aria-keyshortcuts="G"
       @click="toggleMode"
     >
-      <component :is="is3D ? Map : Globe" class="h-5 w-5" aria-hidden="true" />
-      <span class="key" aria-hidden="true">G</span>
-      <span class="tip" aria-hidden="true">{{ is3D ? "Flat map" : "Globe" }}</span>
+      <component :is="is3D ? Map : Globe" class="h-4 w-4" aria-hidden="true" />
+      <span class="tip" aria-hidden="true">{{ is3D ? "Flat map" : "Globe" }} <kbd class="kbd">G</kbd></span>
     </button>
-    <button type="button" class="tool" aria-label="Full screen with no controls" aria-keyshortcuts="F" @click="enterClearView">
-      <Maximize class="h-5 w-5" aria-hidden="true" />
-      <span class="key" aria-hidden="true">F</span>
-      <span class="tip" aria-hidden="true">Full screen, no controls</span>
+    <button type="button" class="icon-btn tool" aria-label="Full screen with no controls" aria-keyshortcuts="F" @click="enterClearView">
+      <Maximize class="h-4 w-4" aria-hidden="true" />
+      <span class="tip" aria-hidden="true">Full screen, no controls <kbd class="kbd">F</kbd></span>
     </button>
   </nav>
 </template>
 
 <style scoped>
 .tool {
-  @apply relative flex h-10 w-11 items-center justify-center text-dim transition-colors first:rounded-t last:rounded-b;
+  @apply relative;
 }
-.tool:hover {
-  @apply bg-raised text-paper;
+.rule {
+  @apply mx-1 my-0.5 border-edge;
 }
-.tool[aria-pressed="true"] {
-  @apply bg-signal text-ink;
-}
-/* The key that picks the tool, tucked in the corner. */
-.key {
-  @apply absolute bottom-0.5 right-1 font-mono text-[9px] leading-none opacity-60;
-}
-/* The tool's name, shown beside it on hover or keyboard focus. */
+/* The tool's name and key, shown beside it on hover or keyboard focus. */
 .tip {
-  @apply pointer-events-none absolute left-full top-1/2 z-30 ml-2 -translate-y-1/2 whitespace-nowrap rounded border border-edge bg-ink px-2 py-1 text-xs text-paper opacity-0 shadow-lg shadow-black/40;
+  @apply pointer-events-none absolute left-full top-1/2 z-30 ml-2.5 flex -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-md border border-edge bg-ink px-2 py-1 text-xs text-paper opacity-0 shadow-md shadow-black/30;
 }
 .tool:hover .tip,
 .tool:focus-visible .tip {

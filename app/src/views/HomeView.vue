@@ -97,7 +97,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
     <template v-if="!clear">
       <!-- Tools down the left edge; beside them the search box, then whatever the active tool needs. -->
       <div class="pointer-events-none absolute left-3 top-3 z-20 flex items-start gap-2">
-        <ToolRail class="pointer-events-auto" />
+        <!-- Above its neighbours, so the tools' hover labels are not covered. -->
+        <ToolRail class="pointer-events-auto relative z-10" />
         <div class="flex flex-col items-start gap-2">
           <FindBox ref="find" class="pointer-events-auto" />
           <ToolHint class="pointer-events-auto" />
@@ -105,13 +106,15 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
         </div>
       </div>
 
-      <div class="absolute right-3 top-3 z-20 flex max-h-[calc(100%-4.5rem)] flex-col items-end gap-2 overflow-y-auto">
+      <div class="absolute right-3 top-3 z-20 flex max-h-[calc(100%-5rem)] flex-col items-end gap-2 overflow-y-auto">
         <LayersPanel />
         <SelectionPanel />
       </div>
 
-      <BaseMapSwitch class="absolute bottom-14 left-3 z-10" />
-      <MarginBar class="absolute inset-x-0 bottom-0 z-20" />
+      <div class="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex items-end gap-2">
+        <BaseMapSwitch class="pointer-events-auto" />
+        <MarginBar class="pointer-events-auto flex-1" />
+      </div>
     </template>
 
     <!-- Shown for a moment on entering the clear view, then gone. -->

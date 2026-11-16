@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Browser-drawn pieces (drop-down lists, scroll bars) follow the dark look. */
+html {
+  color-scheme: dark;
+}
+
 html, body, #app {
   height: 100%;
   width: 100%;
@@ -11,13 +16,27 @@ html, body, #app {
 }
 
 body {
-  @apply bg-ink font-sans text-paper;
+  @apply bg-ink font-sans text-paper antialiased;
 }
 
 @layer components {
   /* Every floating piece of chrome sits on this. */
   .panel {
-    @apply rounded border border-edge bg-ink/90 text-paper shadow-lg shadow-black/40 backdrop-blur-sm;
+    @apply rounded-lg border border-edge bg-ink/90 text-paper shadow-md shadow-black/30 backdrop-blur-md;
+  }
+  /* A square button holding one small icon. */
+  .icon-btn {
+    @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-dim transition-colors;
+  }
+  .icon-btn:hover {
+    @apply bg-raised text-paper;
+  }
+  .icon-btn[aria-pressed="true"] {
+    @apply bg-signal text-ink;
+  }
+  /* A key name inside a hint: "R". */
+  .kbd {
+    @apply rounded border border-edge bg-raised px-1 font-mono text-[10px] leading-4 text-dim;
   }
 }
 
@@ -39,7 +58,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid theme("colors.signal");
+  outline: 2px solid #71717A;
   outline-offset: 2px;
 }
 

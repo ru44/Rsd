@@ -41,11 +41,11 @@ interface Unsaved {
 }
 
 const API = `${API_URL}/api/areas`;
-export const AREA_COLORS = ["#7FD4F5", "#FF8080", "#AAFFAA", "#FFFF80", "#F2B441", "#E8E4D8"];
+export const AREA_COLORS = ["#7FD4F5", "#FF8080", "#AAFFAA", "#FFFF80", "#F2B441", "#FAFAFA"];
 const DEFAULT_COLOR = AREA_COLORS[0];
 const DRAFT_ID = "area-draft";
-const INK = Cesium.Color.fromCssColorString("#14202B");
-const PAPER = Cesium.Color.fromCssColorString("#E8E4D8");
+const INK = Cesium.Color.fromCssColorString("#09090B");
+const PAPER = Cesium.Color.fromCssColorString("#FAFAFA");
 
 const areas = ref<Area[]>([]);
 /** Drawn but not yet stored, because the backend could not be reached. */

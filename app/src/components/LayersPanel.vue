@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { ChevronDown, Layers, Trash2 } from "lucide-vue-next";
+import { computed, ref, watch } from "vue";
+import { Layers, Trash2, X } from "lucide-vue-next";
 import { toGeoJson, toKml } from "@/lib/exporters";
 import { useMap } from "@/composables/useMap";
 import { useAreas } from "@/composables/useAreas";
@@ -8,7 +8,7 @@ import { useSymbols } from "@/composables/useSymbols";
 import { useMgrsGrid } from "@/composables/useMgrsGrid";
 import { selection } from "@/composables/selection";
 
-const { viewer } = useMap();
+const { viewer, pressed } = useMap();
 const { visible: gridVisible } = useMgrsGrid();
 const {
   areas,
@@ -24,8 +24,11 @@ const {
   removeAll: removeSymbols,
 } = useSymbols();
 
-// Starts closed on small screens so the map is not covered.
-const open = ref(window.innerWidth >= 640);
+// An icon until it is wanted, and again as soon as the map is in use.
+const open = ref(false);
+watch(pressed, (down) => {
+  if (down && !confirming.value) open.value = false;
+});
 /** Which layer is asking "delete all?", if any. */
 const confirming = ref<"areas" | "symbols" | null>(null);
 
@@ -68,21 +71,17 @@ async function removeConfirmed() {
 </script>
 
 <template>
-  <section class="panel w-60 max-w-[calc(100vw-6rem)] text-sm" aria-label="Layers">
-    <button
-      type="button"
-      class="flex w-full items-center gap-2 px-3 py-2 font-bold"
-      :aria-expanded="open"
-      @click="open = !open"
-    >
+  <section class="panel text-sm" :class="open ? 'w-60 max-w-[calc(100vw-6rem)]' : 'p-1'" aria-label="Layers">
+    <button v-if="!open" type="button" class="icon-btn" aria-label="Layers" title="Layers and export" aria-expanded="false" @click="open = true">
+      <Layers class="h-4 w-4" aria-hidden="true" />
+    </button>
+    <header v-else class="flex items-center gap-2 py-1 pl-3 pr-1 font-medium">
       <Layers class="h-4 w-4 text-dim" aria-hidden="true" />
       Layers
-      <ChevronDown
-        class="ml-auto h-4 w-4 text-dim transition-transform"
-        :class="{ 'rotate-180': open }"
-        aria-hidden="true"
-      />
-    </button>
+      <button type="button" class="icon-btn ml-auto" aria-label="Close layers" aria-expanded="true" @click="open = false">
+        <X class="h-4 w-4" aria-hidden="true" />
+      </button>
+    </header>
 
     <div v-if="open" class="border-t border-edge py-1">
       <label class="row">
@@ -111,7 +110,7 @@ async function removeConfirmed() {
         <li v-for="a in areas" :key="a.id">
           <button
             type="button"
-            class="w-full truncate py-1 pl-10 pr-3 text-left text-dim hover:bg-raised hover:text-paper"
+            class="mx-1 block w-[calc(100%-0.5rem)] truncate rounded-md py-1 pl-9 pr-2 text-left text-dim hover:bg-raised hover:text-paper"
             :class="{ 'bg-raised text-signal': selection?.kind === 'area' && selection.id === a.id }"
             :title="`Select ${a.name} and go to it`"
             @click="goTo(a)"
@@ -139,13 +138,13 @@ async function removeConfirmed() {
         </button>
       </div>
 
-      <div v-if="confirming" class="mx-2 my-1 rounded-sm bg-raised p-2" role="alertdialog">
+      <div v-if="confirming" class="mx-2 my-1 rounded-md bg-raised p-2" role="alertdialog">
         <p>Delete all {{ confirming === "areas" ? "shapes" : "symbols" }}? This cannot be undone.</p>
         <div class="mt-2 flex gap-2">
-          <button type="button" class="rounded-sm bg-hostile px-2.5 py-1 text-xs font-bold text-ink" @click="removeConfirmed">
+          <button type="button" class="rounded-md bg-hostile px-2.5 py-1 text-xs font-medium text-ink" @click="removeConfirmed">
             Delete all
           </button>
-          <button type="button" class="rounded-sm px-2.5 py-1 text-xs font-bold text-dim hover:text-paper" @click="confirming = null">
+          <button type="button" class="rounded-md px-2.5 py-1 text-xs font-medium text-dim hover:text-paper" @click="confirming = null">
             Keep
           </button>
         </div>
@@ -173,16 +172,16 @@ async function removeConfirmed() {
   @apply h-4 w-4 cursor-pointer accent-signal;
 }
 .icon {
-  @apply rounded-sm p-1 text-dim;
+  @apply rounded-md p-1 text-dim;
 }
 .icon:hover {
   @apply bg-raised text-hostile;
 }
 .export {
-  @apply rounded-sm border border-edge px-2 py-1 font-bold text-paper;
+  @apply rounded-md border border-edge px-2 py-1 font-medium text-paper transition-colors;
 }
 .export:hover:not(:disabled) {
-  @apply border-signal text-signal;
+  @apply bg-raised;
 }
 .export:disabled {
   @apply cursor-not-allowed opacity-40;

@@ -45,7 +45,7 @@ const finish = () => (tool.value === "ruler" ? ruler.finish() : finishDraw());
 </script>
 
 <template>
-  <div v-if="text" class="panel flex max-w-md items-center gap-3 py-1.5 pl-3 pr-1.5 text-sm" role="status">
+  <div v-if="text" class="panel flex max-w-md items-center gap-2 py-1 pl-3 pr-1 text-sm" role="status">
     <span :class="{ 'font-mono': tool === 'ruler' && ruler.info.value }">{{ text }}</span>
     <button v-if="finishable" type="button" class="act bg-signal text-ink" :disabled="!canFinish" @click="finish">
       Finish
@@ -58,7 +58,7 @@ const finish = () => (tool.value === "ruler" ? ruler.finish() : finishDraw());
 
 <style scoped>
 .act {
-  @apply shrink-0 rounded-sm px-2.5 py-1 text-xs font-bold;
+  @apply h-7 shrink-0 rounded-md px-2.5 text-xs font-medium;
 }
 .act:disabled {
   @apply cursor-not-allowed opacity-40;

@@ -9,7 +9,7 @@ import { bearingDeg, distanceM, formatBearing, formatDistance, pathLengthM, type
 
 const ID = "ruler";
 const SIGNAL = Cesium.Color.fromCssColorString("#F2B441");
-const INK = Cesium.Color.fromCssColorString("#14202B");
+const INK = Cesium.Color.fromCssColorString("#09090B");
 
 /** Points clicked so far. */
 const count = ref(0);
@@ -44,7 +44,7 @@ function label(id: string, position: Cesium.Cartesian3 | Cesium.CallbackProperty
     position: position as unknown as Cesium.PositionProperty,
     label: {
       text: text as unknown as string,
-      font: `${strong ? "bold " : ""}13px ui-monospace, monospace`,
+      font: `${strong ? "600 " : ""}12px 'Geist Mono Variable', monospace`,
       fillColor: strong ? INK : SIGNAL,
       showBackground: true,
       backgroundColor: strong ? SIGNAL : INK.withAlpha(0.85),

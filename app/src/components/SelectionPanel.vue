@@ -70,10 +70,10 @@ function remove() {
 
 <template>
   <section v-if="area || symbol" class="panel w-60 max-w-[calc(100vw-6rem)] text-sm" :aria-label="`Selected ${title.toLowerCase()}`">
-    <header class="flex items-center gap-2 border-b border-edge py-1.5 pl-3 pr-1.5 font-bold">
+    <header class="flex items-center gap-2 border-b border-edge py-1.5 pl-3 pr-1.5 font-medium">
       <img v-if="symbol" :src="symbolImage(symbol.sidc, 16)" alt="" class="max-h-6 max-w-7" />
       {{ title }}
-      <button type="button" class="ml-auto rounded-sm p-1 text-dim hover:bg-raised hover:text-paper" aria-label="Close" title="Deselect (Esc)" @click="selection = null">
+      <button type="button" class="ml-auto rounded-md p-1 text-dim hover:bg-raised hover:text-paper" aria-label="Close" title="Deselect (Esc)" @click="selection = null">
         <X class="h-4 w-4" aria-hidden="true" />
       </button>
     </header>
@@ -146,7 +146,7 @@ function remove() {
         <p class="text-xs text-dim">Drag the symbol to move it.</p>
       </template>
 
-      <button type="button" class="flex items-center gap-1.5 rounded-sm border border-edge px-2.5 py-1 text-xs font-bold text-hostile hover:border-hostile" @click="remove">
+      <button type="button" class="flex items-center gap-1.5 rounded-md border border-edge px-2.5 py-1 text-xs font-medium text-hostile hover:border-hostile" @click="remove">
         <Trash2 class="h-3.5 w-3.5" aria-hidden="true" />
         Delete {{ title.toLowerCase() }}
       </button>
@@ -156,7 +156,7 @@ function remove() {
 
 <style scoped>
 .field {
-  @apply w-full rounded-sm border border-edge bg-raised px-2 py-1.5 text-paper;
+  @apply w-full rounded-md border border-edge bg-raised px-2 py-1.5 text-paper;
 }
 .field[aria-invalid="true"] {
   @apply border-hostile;
@@ -168,7 +168,7 @@ function remove() {
   @apply border-paper ring-2 ring-ink;
 }
 .choice {
-  @apply flex items-center gap-1.5 rounded-sm border border-edge px-2 py-1 text-xs text-dim;
+  @apply flex items-center gap-1.5 rounded-md border border-edge px-2 py-1 text-xs text-dim;
 }
 .choice:hover {
   @apply text-paper;
