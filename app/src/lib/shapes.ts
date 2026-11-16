@@ -4,7 +4,9 @@
 // fine for a readout, not for survey work.
 
 export type Pt = [number, number];
-export type ShapeKind = "polygon" | "rect" | "circle" | "line";
+export type ShapeKind = "polygon" | "rect" | "circle" | "line" | "arrow" | "text";
+/** Lines and arrows: a path with two ends, not a closed outline. */
+export const isPath = (kind: ShapeKind) => kind === "line" || kind === "arrow";
 
 const R = 6371008.8; // mean Earth radius in metres
 const rad = (d: number) => (d * Math.PI) / 180;
@@ -120,7 +122,8 @@ export type Stat = [label: string, value: string];
 
 /** Everything worth knowing about a shape's size, one measurement per row. */
 export function measurements(kind: ShapeKind, pts: Pt[]): Stat[] {
-  if (kind === "line") {
+  if (kind === "text") return [];
+  if (isPath(kind)) {
     if (pts.length < 2) return [];
     const [first, last] = [pts[0], pts[pts.length - 1]];
     const rows: Stat[] = [["Length", formatDistance(pathLengthM(pts))]];
@@ -161,7 +164,8 @@ export function measurements(kind: ShapeKind, pts: Pt[]): Stat[] {
 
 /** One line of measurements for a shape, e.g. "Radius 3.2 km". */
 export function measure(kind: ShapeKind, pts: Pt[]): string {
-  if (kind === "line") return pts.length > 1 ? `Length ${formatDistance(pathLengthM(pts))}` : "";
+  if (kind === "text") return "";
+  if (isPath(kind)) return pts.length > 1 ? `Length ${formatDistance(pathLengthM(pts))}` : "";
   if (pts.length < 3) return "";
   if (kind === "circle") {
     const r = circleOf(pts).radiusM;
@@ -178,7 +182,8 @@ export function measure(kind: ShapeKind, pts: Pt[]): string {
 
 export type ShapeGeo =
   | { type: "Polygon"; coordinates: Pt[][] }
-  | { type: "LineString"; coordinates: Pt[] };
+  | { type: "LineString"; coordinates: Pt[] }
+  | { type: "Point"; coordinates: Pt };
 
 /** What to call each kind of shape. */
 export const SHAPE_LABEL: Record<ShapeKind, string> = {
@@ -186,17 +191,21 @@ export const SHAPE_LABEL: Record<ShapeKind, string> = {
   rect: "Rectangle",
   circle: "Circle",
   line: "Line",
+  arrow: "Arrow",
+  text: "Text",
 };
 
 /** A shape's own points: a line's points, or a ring without its repeated last point. */
 export function pointsOf(geo: ShapeGeo): Pt[] {
+  if (geo.type === "Point") return [[geo.coordinates[0], geo.coordinates[1]]];
   return geo.type === "LineString"
     ? geo.coordinates.map((p) => [p[0], p[1]])
     : geo.coordinates[0].slice(0, -1).map((p) => [p[0], p[1]]);
 }
 
 export function toGeo(kind: ShapeKind, pts: Pt[]): ShapeGeo {
-  return kind === "line"
+  if (kind === "text") return { type: "Point", coordinates: pts[0] };
+  return isPath(kind)
     ? { type: "LineString", coordinates: pts }
     : { type: "Polygon", coordinates: [[...pts, pts[0]]] };
 }
@@ -207,7 +216,8 @@ export function toGeo(kind: ShapeKind, pts: Pt[]): ShapeGeo {
  * no longer fit that note, the shape is treated as a free polygon.
  */
 export function kindOf(shape: { shape?: string | null; geojson: ShapeGeo }): ShapeKind {
-  if (shape.geojson.type === "LineString") return "line";
+  if (shape.geojson.type === "Point") return "text";
+  if (shape.geojson.type === "LineString") return shape.shape === "arrow" ? "arrow" : "line";
   const corners = shape.geojson.coordinates[0].length - 1;
   if (shape.shape === "rect" && corners === 4) return "rect";
   if (shape.shape === "circle" && corners >= 8) return "circle";

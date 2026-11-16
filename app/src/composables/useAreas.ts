@@ -4,11 +4,13 @@ import * as Cesium from "cesium";
 import { API_URL, shiftHeld, useMap, type LonLat } from "./useMap";
 import { EDIT_PREFIX, selection } from "./selection";
 import { isDrawTool, tool } from "./tool";
+import { clearHistory, idTracker, record } from "./history";
 import {
   SHAPE_LABEL,
   circleOf,
   circleRing,
   distanceM,
+  isPath,
   kindOf,
   measure,
   measurements,
@@ -38,6 +40,16 @@ interface Unsaved {
   entityId: string;
   shape: ShapeKind;
   geojson: ShapeGeo;
+  /** Set for shapes read from a file; drawn shapes are named when saved. */
+  name?: string;
+  color?: string;
+}
+/** A shape to add without drawing it, as when reading a file. */
+export interface NewShape {
+  kind: ShapeKind;
+  pts: Pt[];
+  name?: string;
+  color?: string;
 }
 
 const API = `${API_URL}/api/areas`;
@@ -65,6 +77,7 @@ let flushing = false;
 let seq = 0;
 /** Entity of the shape to select as soon as the backend has stored it. */
 let selectWhenSaved: string | null = null;
+const ids = idTracker();
 
 // A new shape: clicked points for an area or line, or the two ends of the
 // drag that makes a rectangle or circle.
@@ -97,20 +110,36 @@ const find = (id: number) => areas.value.find((a) => a.id === id);
 // Cesium refuses an empty list, which a shape just being started has.
 const toCartesian = (pts: Pt[]) => (pts.length ? Cesium.Cartesian3.fromDegreesArray(pts.flat()) : []);
 /** Points along the outline: a closed shape ends where it began. */
-const outline = (kind: ShapeKind, pts: Pt[]) => (kind === "line" || pts.length < 3 ? pts : [...pts, pts[0]]);
+const outline = (kind: ShapeKind, pts: Pt[]) => (isPath(kind) || pts.length < 3 ? pts : [...pts, pts[0]]);
 // A rectangle's sides follow the grid lines instead of the shortest path.
 const arcOf = (kind: ShapeKind) => (kind === "rect" ? Cesium.ArcType.RHUMB : Cesium.ArcType.GEODESIC);
 
-function drawShape(id: string, kind: ShapeKind, geo: ShapeGeo, color = DEFAULT_COLOR) {
+function drawShape(id: string, kind: ShapeKind, geo: ShapeGeo, color = DEFAULT_COLOR, name = "") {
   const entities = layer()?.entities;
   if (!entities) return;
   entities.removeById(id);
   const pts = pointsOf(geo);
   const css = Cesium.Color.fromCssColorString(color);
+  if (kind === "text") {
+    entities.add({
+      id,
+      position: Cesium.Cartesian3.fromDegrees(pts[0][0], pts[0][1]),
+      label: {
+        text: name || SHAPE_LABEL.text,
+        font: "600 15px 'Geist Variable', sans-serif",
+        fillColor: css,
+        showBackground: true,
+        backgroundColor: INK.withAlpha(0.8),
+        backgroundPadding: new Cesium.Cartesian2(7, 5),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    });
+    return;
+  }
   entities.add({
     id,
     polygon:
-      kind === "line"
+      isPath(kind)
         ? undefined
         : {
             hierarchy: new Cesium.PolygonHierarchy(toCartesian(pts)),
@@ -119,15 +148,15 @@ function drawShape(id: string, kind: ShapeKind, geo: ShapeGeo, color = DEFAULT_C
           },
     polyline: {
       positions: toCartesian(outline(kind, pts)),
-      width: kind === "line" ? 3.5 : 2.5,
-      material: css,
+      width: kind === "arrow" ? 14 : kind === "line" ? 3.5 : 2.5,
+      material: kind === "arrow" ? new Cesium.PolylineArrowMaterialProperty(css) : css,
       clampToGround: true,
       arcType: arcOf(kind),
     },
   });
 }
 
-const redraw = (a: Area) => drawShape(`area-${a.id}`, kindOf(a), a.geojson, a.color ?? undefined);
+const redraw = (a: Area) => drawShape(`area-${a.id}`, kindOf(a), a.geojson, a.color ?? undefined, a.name);
 
 // ---- drawing a new shape ------------------------------------------------
 
@@ -170,7 +199,7 @@ function showDraft() {
   v.entities.add({
     id: DRAFT_ID,
     polygon:
-      t === "line"
+      isPath(t)
         ? undefined
         : {
             hierarchy: new Cesium.CallbackProperty(() => {
@@ -209,15 +238,17 @@ async function flush() {
       const item = unsaved.value[0];
       const sameKind = areas.value.filter((a) => kindOf(a) === item.shape).length;
       const { data: saved } = await axios.post<Area>(API, {
-        name: `${SHAPE_LABEL[item.shape]} ${sameKind + 1}`,
+        name: item.name ?? `${SHAPE_LABEL[item.shape]} ${sameKind + 1}`,
         geojson: item.geojson,
-        color: DEFAULT_COLOR,
+        color: item.color ?? DEFAULT_COLOR,
         shape: item.shape,
       });
       layer()?.entities.removeById(item.entityId);
       areas.value.push(saved);
       redraw(saved);
       unsaved.value.shift();
+      const life = lifeOf(saved);
+      record({ undo: life.end, redo: life.restore });
       // Straight after drawing, the new shape is selected, ready to adjust.
       if (selectWhenSaved === item.entityId && tool.value === "select" && !selection.value) {
         selection.value = { kind: "area", id: saved.id };
@@ -231,6 +262,76 @@ async function flush() {
     selectWhenSaved = null;
     flushing = false;
   }
+}
+
+/** Stores a shape again after it was deleted. It comes back under a new number. */
+async function recreate(snap: Area) {
+  const { data: saved } = await axios.post<Area>(API, {
+    name: snap.name,
+    geojson: snap.geojson,
+    color: snap.color ?? DEFAULT_COLOR,
+    shape: snap.shape ?? kindOf(snap),
+  });
+  areas.value.push(saved);
+  redraw(saved);
+  return saved;
+}
+
+/** Deletes a shape for good. Returns false if the backend could not be reached. */
+async function removeNow(id: number) {
+  try {
+    await axios.delete(`${API}/${id}`);
+  } catch (e) {
+    offline.value = true;
+    console.error(e);
+    return false;
+  }
+  if (selection.value?.kind === "area" && selection.value.id === id) selection.value = null;
+  layer()?.entities.removeById(`area-${id}`);
+  areas.value = areas.value.filter((a) => a.id !== id);
+  return true;
+}
+
+/** The two halves of undoing a shape's creation or deletion. */
+function lifeOf(shape: Area) {
+  const id = shape.id;
+  let snap: Area = { ...shape };
+  return {
+    async end() {
+      const now = find(ids.current(id));
+      if (!now) return;
+      snap = { ...now }; // as it is now, so it comes back with later changes
+      await removeNow(now.id);
+    },
+    async restore() {
+      const saved = await recreate(snap);
+      ids.renumber(id, saved.id);
+    },
+  };
+}
+
+/** Changes a shape's name or colour, on screen and in the backend. */
+function applyUpdate(id: number, patch: { name?: string; color?: string }) {
+  const area = find(id);
+  if (!area) return;
+  Object.assign(area, patch);
+  if (patch.color || kindOf(area) === "text") {
+    redraw(area);
+    if (editing?.id === id) beginEdit(id); // re-attach the live shape and handles
+  }
+  push(id, patch);
+}
+
+/** Puts a shape's points back to an earlier or later state. */
+function applyGeo(id: number, geojson: ShapeGeo) {
+  const area = find(id);
+  if (!area) return;
+  const selected = editing?.id === id;
+  if (selected) endEdit();
+  area.geojson = geojson;
+  redraw(area);
+  if (selected) beginEdit(id);
+  push(id, { geojson });
 }
 
 /** Keeps a finished drawing, saves it, and goes back to the select tool. */
@@ -249,12 +350,16 @@ function keep(kind: ShapeKind, pts: Pt[]) {
 function finishDraw() {
   const t = tool.value;
   if (t === "polygon" && draft.length >= 3) keep("polygon", draft);
-  else if (t === "line" && draft.length >= 2) keep("line", draft);
+  else if ((t === "line" || t === "arrow") && draft.length >= 2) keep(t, draft);
 }
 
 function addPoint(pos: LonLat, entityId: string | null) {
   const t = tool.value;
-  if (t !== "polygon" && t !== "line") return false;
+  if (t === "text") {
+    keep("text", [[pos.lon, pos.lat]]); // one click puts a label down
+    return true;
+  }
+  if (t !== "polygon" && t !== "line" && t !== "arrow") return false;
   const last = `${DRAFT_ID}-${draft.length - 1}`;
   // Clicking the last point again (a double-click), or an area's first
   // point, ends the shape.
@@ -297,6 +402,7 @@ function showHandles() {
   removeHandles();
   if (!editing) return;
   const { kind, pts } = editing;
+  if (kind === "text") return; // a label is moved by dragging it
   const at = (i: number) => editing!.pts[i % editing!.pts.length];
   const corner = (i: number) =>
     dot(
@@ -310,7 +416,7 @@ function showHandles() {
   }
   pts.forEach((_, i) => corner(i));
   if (kind === "rect") return;
-  const sides = kind === "line" ? pts.length - 1 : pts.length;
+  const sides = isPath(kind) ? pts.length - 1 : pts.length;
   for (let i = 0; i < sides; i++) {
     dot(
       `${EDIT_PREFIX}area-side-${i}`,
@@ -327,11 +433,20 @@ function showHandles() {
 function beginEdit(id: number) {
   const area = find(id);
   const entity = layer()?.entities.getById(`area-${id}`);
-  if (!area || !entity?.polyline) return;
+  if (!area || !entity) return;
   const kind = kindOf(area);
   const pts = pointsOf(area.geojson);
   editing = { id, kind, pts, ...(kind === "circle" ? circleOf(pts) : {}) };
   liveMeasure.value = measurements(kind, pts);
+  if (kind === "text") {
+    entity.position = new Cesium.CallbackProperty(
+      () => Cesium.Cartesian3.fromDegrees(...(editing?.pts[0] ?? pts[0])),
+      false
+    ) as unknown as Cesium.PositionProperty;
+    if (entity.label) entity.label.backgroundColor = new Cesium.ConstantProperty(Cesium.Color.fromCssColorString("#3F3F46"));
+    return;
+  }
+  if (!entity.polyline) return;
   // While editing, the shape is read from `editing.pts` every frame, so it
   // follows the pointer during a drag.
   const live = () => editing?.pts ?? pts;
@@ -360,8 +475,11 @@ function commitShape() {
   if (!editing) return;
   const area = find(editing.id);
   if (!area) return;
-  area.geojson = toGeo(editing.kind, editing.pts);
-  push(area.id, { geojson: area.geojson });
+  const [id, before] = [area.id, area.geojson];
+  const after = toGeo(editing.kind, editing.pts);
+  area.geojson = after;
+  push(id, { geojson: after });
+  record({ undo: () => applyGeo(ids.current(id), before), redo: () => applyGeo(ids.current(id), after) });
 }
 
 export function useAreas() {
@@ -370,14 +488,14 @@ export function useAreas() {
     const map = useMap();
     map.onLeftClick(addPoint);
     map.onRightClick((_pos, entityId) => {
-      if (tool.value === "polygon" || tool.value === "line") {
+      if (tool.value === "polygon" || tool.value === "line" || tool.value === "arrow") {
         finishDraw(); // right-click also ends the shape
         return true;
       }
       // Right-click a point of the selected area or line to remove it.
       const corner = entityId?.match(/^edit-area-corner-(\d+)$/);
       if (!editing || !corner) return;
-      const least = editing.kind === "polygon" ? 3 : editing.kind === "line" ? 2 : Infinity;
+      const least = editing.kind === "polygon" ? 3 : isPath(editing.kind) ? 2 : Infinity;
       if (editing.pts.length > least) {
         editing.pts.splice(+corner[1], 1);
         liveMeasure.value = measurements(editing.kind, editing.pts);
@@ -492,25 +610,27 @@ export function useAreas() {
   function update(id: number, patch: { name?: string; color?: string }) {
     const area = find(id);
     if (!area) return;
-    Object.assign(area, patch);
-    if (patch.color) {
-      redraw(area);
-      if (editing?.id === id) beginEdit(id); // re-attach the live shape and handles
-    }
-    push(id, patch);
+    const before = { ...(patch.name !== undefined && { name: area.name }), ...(patch.color && { color: area.color ?? DEFAULT_COLOR }) };
+    applyUpdate(id, patch);
+    record({ undo: () => applyUpdate(ids.current(id), before), redo: () => applyUpdate(ids.current(id), patch) });
   }
 
   async function remove(id: number) {
-    try {
-      await axios.delete(`${API}/${id}`);
-    } catch (e) {
-      offline.value = true;
-      console.error(e);
-      return;
+    const area = find(id);
+    if (!area) return;
+    const life = lifeOf(area);
+    if (await removeNow(id)) record({ undo: life.restore, redo: life.end });
+  }
+
+  /** Adds shapes that were not drawn by hand, as when a file is read. */
+  function addMany(shapes: NewShape[]) {
+    for (const s of shapes) {
+      const geojson = toGeo(s.kind, s.pts);
+      const entityId = `area-new-${++seq}`;
+      drawShape(entityId, s.kind, geojson, s.color, s.name);
+      unsaved.value.push({ entityId, shape: s.kind, geojson, name: s.name, color: s.color });
     }
-    if (selection.value?.kind === "area" && selection.value.id === id) selection.value = null;
-    layer()?.entities.removeById(`area-${id}`);
-    areas.value = areas.value.filter((a) => a.id !== id);
+    return flush();
   }
 
   async function removeAll() {
@@ -525,6 +645,7 @@ export function useAreas() {
     layer()?.entities.removeAll();
     areas.value = [];
     unsaved.value = [];
+    clearHistory(); // nothing left for the earlier steps to act on
   }
 
   /** Select a shape and bring it into view. */
@@ -550,6 +671,7 @@ export function useAreas() {
     update,
     remove,
     removeAll,
+    addMany,
     goTo,
   };
 }

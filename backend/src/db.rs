@@ -74,9 +74,11 @@ const INIT_SQL: &str =
         ) THEN
             ALTER TABLE areas ALTER COLUMN geom TYPE GEOMETRY(Geometry, 4326);
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'areas_geom_kind') THEN
-            ALTER TABLE areas ADD CONSTRAINT areas_geom_kind
-                CHECK (GeometryType(geom) IN ('POLYGON', 'LINESTRING'));
+        -- Text labels are stored as points; replace the older, narrower rule.
+        ALTER TABLE areas DROP CONSTRAINT IF EXISTS areas_geom_kind;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'areas_geom_kinds') THEN
+            ALTER TABLE areas ADD CONSTRAINT areas_geom_kinds
+                CHECK (GeometryType(geom) IN ('POLYGON', 'LINESTRING', 'POINT'));
         END IF;
     END $$;
     ALTER TABLE markers ADD COLUMN IF NOT EXISTS color TEXT;

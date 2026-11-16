@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { Component } from "vue";
-import { Circle, Flag, Globe, Hand, Map, Maximize, MousePointer2, Pentagon, Ruler, Square, Waypoints } from "lucide-vue-next";
+import { Circle, Flag, Globe, Hand, Map, Maximize, MousePointer2, MoveUpRight, Pentagon, Redo2, Ruler, Square, Type, Undo2, Waypoints } from "lucide-vue-next";
 import { useMap } from "@/composables/useMap";
 import { useClearView } from "@/composables/useClearView";
 import { isDrawTool, pickerOpen, tool, type Tool } from "@/composables/tool";
+import { canRedo, canUndo, redo, undo } from "@/composables/history";
 
 const { is3D, toggleMode } = useMap();
 const { enter: enterClearView } = useClearView();
@@ -23,12 +24,14 @@ const DRAW: Item[] = [
   { id: "circle", label: "Circle", key: "C", icon: Circle },
   { id: "polygon", label: "Area with any number of corners", key: "P", icon: Pentagon },
   { id: "line", label: "Line", key: "L", icon: Waypoints },
+  { id: "arrow", label: "Arrow", key: "A", icon: MoveUpRight },
+  { id: "text", label: "Text label", key: "T", icon: Type },
 ];
 
 // Only one tool is active at a time. Pressing a drawing tool again puts it down.
 function choose(id: Tool) {
   pickerOpen.value = false;
-  tool.value = (isDrawTool(id) || id === "ruler") && tool.value === id ? "select" : id;
+  tool.value = (isDrawTool(id) || id === "ruler" || id === "text") && tool.value === id ? "select" : id;
 }
 function toggleSymbols() {
   if (tool.value === "symbol") {
@@ -83,6 +86,16 @@ function toggleSymbols() {
     </button>
 
     <hr class="rule" />
+    <button type="button" class="icon-btn tool" aria-label="Undo" aria-keyshortcuts="Control+Z" :disabled="!canUndo" @click="undo">
+      <Undo2 class="h-4 w-4" aria-hidden="true" />
+      <span class="tip" aria-hidden="true">Undo <kbd class="kbd">Ctrl Z</kbd></span>
+    </button>
+    <button type="button" class="icon-btn tool" aria-label="Redo" aria-keyshortcuts="Control+Shift+Z" :disabled="!canRedo" @click="redo">
+      <Redo2 class="h-4 w-4" aria-hidden="true" />
+      <span class="tip" aria-hidden="true">Redo <kbd class="kbd">Ctrl Shift Z</kbd></span>
+    </button>
+
+    <hr class="rule" />
     <button
       type="button"
       class="icon-btn tool"
@@ -103,6 +116,9 @@ function toggleSymbols() {
 <style scoped>
 .tool {
   @apply relative;
+}
+.tool:disabled {
+  @apply cursor-not-allowed opacity-30 hover:bg-transparent hover:text-dim;
 }
 .rule {
   @apply mx-1 my-0.5 border-edge;

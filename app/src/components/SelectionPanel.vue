@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { Trash2, X } from "lucide-vue-next";
 import { selection } from "@/composables/selection";
 import { AREA_COLORS, useAreas } from "@/composables/useAreas";
@@ -21,6 +21,7 @@ const symbol = computed(() =>
 // Text boxes edit a copy, saved when the person leaves the box or presses Enter.
 const name = ref("");
 const code = ref("");
+const nameField = ref<HTMLInputElement | null>(null);
 watch(
   [area, symbol],
   () => {
@@ -45,7 +46,19 @@ const HELP = {
   line: "Drag a point to reshape. Drag a small dot to add a point. Drag the line to move it. Right-click a point to remove it.",
   rect: "Drag a corner to resize; hold Shift for a square. Drag inside to move.",
   circle: "Drag a dot on the edge to resize. Drag inside to move.",
+  arrow: "It points at its last point. Drag a point to reshape, a small dot to add a point, the arrow to move it.",
+  text: "Drag the label to move it. Change the words in the box above.",
 };
+
+// A label that still has its starting words is waiting to be written.
+watch(
+  () => area.value?.id,
+  () => {
+    if (area.value && kind.value === "text" && /^Text \d+$/.test(area.value.name)) {
+      nextTick(() => (nameField.value?.focus(), nameField.value?.select()));
+    }
+  }
+);
 
 function saveName() {
   const text = name.value.trim();
@@ -80,8 +93,8 @@ function remove() {
 
     <div class="space-y-3 p-3">
       <label class="block">
-        <span class="mb-1 block text-xs text-dim">Name</span>
-        <input v-model="name" type="text" class="field" @blur="saveName" @keydown.enter="($event.target as HTMLInputElement).blur()" />
+        <span class="mb-1 block text-xs text-dim">{{ kind === "text" ? "Words" : "Name" }}</span>
+        <input ref="nameField" v-model="name" type="text" class="field" @blur="saveName" @keydown.enter="($event.target as HTMLInputElement).blur()" />
       </label>
 
       <template v-if="area">

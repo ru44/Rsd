@@ -17,9 +17,10 @@ import { useClearView } from "@/composables/useClearView";
 import { useSelection } from "@/composables/useSelection";
 import { useViewLink } from "@/composables/useViewLink";
 import { useRuler } from "@/composables/useRuler";
+import { redo, undo } from "@/composables/history";
 import { pickerOpen, tool, type Tool } from "@/composables/tool";
 
-const { toggleMode, zoomBy } = useMap();
+const { toggleMode, zoomBy, resetNorth } = useMap();
 const areas = useAreas();
 const symbols = useSymbols();
 const { attach: attachGrid } = useMgrsGrid();
@@ -29,7 +30,7 @@ const { attach: attachViewLink } = useViewLink();
 const ruler = useRuler();
 const find = ref<InstanceType<typeof FindBox> | null>(null);
 
-const TOOL_KEYS: Record<string, Tool> = { h: "hand", v: "select", r: "rect", c: "circle", p: "polygon", l: "line", m: "ruler" };
+const TOOL_KEYS: Record<string, Tool> = { h: "hand", v: "select", r: "rect", c: "circle", p: "polygon", l: "line", a: "arrow", t: "text", m: "ruler" };
 
 function pickSymbol(sidc: string, name: string) {
   pickerOpen.value = false;
@@ -48,9 +49,16 @@ function onKey(e: KeyboardEvent) {
     else deselect();
     return;
   }
+  const key = e.key.toLowerCase();
+  // Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes. In a text box they belong to the typing.
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && !clear.value && (key === "z" || key === "y")) {
+    e.preventDefault();
+    if (key === "y" || e.shiftKey) redo();
+    else undo();
+    return;
+  }
   // Letter keys belong to whatever is being typed in.
   if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
-  const key = e.key.toLowerCase();
   if (key === "f") {
     toggleClearView();
   } else if (clear.value) {
@@ -62,6 +70,8 @@ function onKey(e: KeyboardEvent) {
     tool.value = "select";
     pickerOpen.value = true;
     e.preventDefault(); // keep the letter out of the picker's search box
+  } else if (key === "n") {
+    resetNorth();
   } else if (key === "g") {
     toggleMode();
   } else if (key === "+" || key === "=") {

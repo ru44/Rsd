@@ -21,8 +21,11 @@ const text = computed(() => {
       if (n === 0) return "Click the map to start the area.";
       if (n < 3) return `${n} of at least 3 points. Keep clicking.`;
       return `${n} points. Click to add more, or finish.`;
+    case "text":
+      return "Click the map where the label should go.";
     case "line":
-      if (n === 0) return "Click the map to start the line.";
+    case "arrow":
+      if (n === 0) return `Click the map to start the ${tool.value}${tool.value === "arrow" ? ". It points at the last click" : ""}.`;
       if (n === 1) return "Click the next point.";
       return `${n} points, ${draftInfo.value}. Click to add more, or finish.`;
     case "ruler":
@@ -36,10 +39,10 @@ const text = computed(() => {
   }
 });
 const finishable = computed(
-  () => tool.value === "polygon" || tool.value === "line" || (tool.value === "ruler" && !ruler.done.value)
+  () => ["polygon", "line", "arrow"].includes(tool.value) || (tool.value === "ruler" && !ruler.done.value)
 );
 const canFinish = computed(() =>
-  tool.value === "ruler" ? ruler.count.value >= 2 : pointCount.value >= (tool.value === "line" ? 2 : 3)
+  tool.value === "ruler" ? ruler.count.value >= 2 : pointCount.value >= (tool.value === "polygon" ? 3 : 2)
 );
 const finish = () => (tool.value === "ruler" ? ruler.finish() : finishDraw());
 </script>

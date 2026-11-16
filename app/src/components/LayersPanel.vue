@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { Layers, Trash2, X } from "lucide-vue-next";
+import * as Cesium from "cesium";
+import { Layers, Trash2, Upload, X } from "lucide-vue-next";
+import { readMapFile } from "@/lib/importers";
 import { toGeoJson, toKml } from "@/lib/exporters";
 import { useMap } from "@/composables/useMap";
 import { useAreas } from "@/composables/useAreas";
@@ -15,6 +17,7 @@ const {
   unsaved: unsavedAreas,
   visible: areasVisible,
   removeAll: removeAreas,
+  addMany: addAreas,
   goTo,
 } = useAreas();
 const {
@@ -22,12 +25,16 @@ const {
   unsaved: unsavedSymbols,
   visible: symbolsVisible,
   removeAll: removeSymbols,
+  addMany: addSymbols,
 } = useSymbols();
 
 // An icon until it is wanted, and again as soon as the map is in use.
 const open = ref(false);
 watch(pressed, (down) => {
-  if (down && !confirming.value) open.value = false;
+  if (down && !confirming.value) {
+    open.value = false;
+    importNote.value = "";
+  }
 });
 /** Which layer is asking "delete all?", if any. */
 const confirming = ref<"areas" | "symbols" | null>(null);
@@ -61,6 +68,48 @@ function exportImage() {
   // The picture must be taken straight after drawing a frame, or it is blank.
   v.render();
   save(`rsgis-${today()}.png`, v.canvas.toDataURL("image/png"));
+}
+
+const picker = ref<HTMLInputElement | null>(null);
+/** What the last file brought in, or why it could not be read. */
+const importNote = ref("");
+const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+async function importFile(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = ""; // so the same file can be chosen again
+  if (!file) return;
+  let found;
+  try {
+    found = readMapFile(file.name, await file.text());
+  } catch {
+    importNote.value = `${file.name} could not be read. Use a GeoJSON or KML file.`;
+    return;
+  }
+  const { shapes, symbols: syms, skipped } = found;
+  if (!shapes.length && !syms.length) {
+    importNote.value = `Nothing in ${file.name} can be shown on the map.`;
+    return;
+  }
+  await Promise.all([addAreas(shapes), addSymbols(syms.map((s) => ({ ...s, coords: [s.coords[0], s.coords[1]] })))]);
+  importNote.value =
+    `Added ${[shapes.length && count(shapes.length, "shape"), syms.length && count(syms.length, "symbol")].filter(Boolean).join(" and ")}` +
+    (skipped ? `; ${count(skipped, "item")} left out.` : ".");
+  // Bring everything that was added into view.
+  const all = [...shapes.flatMap((s) => s.pts), ...syms.map((s) => s.coords)];
+  const lons = all.map((p) => p[0]);
+  const lats = all.map((p) => p[1]);
+  const pad = Math.max(0.05, (Math.max(...lons) - Math.min(...lons)) * 0.2, (Math.max(...lats) - Math.min(...lats)) * 0.2);
+  viewer.value?.camera.flyTo({
+    destination: Cesium.Rectangle.fromDegrees(
+      Math.max(-180, Math.min(...lons) - pad),
+      Math.max(-90, Math.min(...lats) - pad),
+      Math.min(180, Math.max(...lons) + pad),
+      Math.min(90, Math.max(...lats) + pad)
+    ),
+    duration: 1.2,
+  });
 }
 
 async function removeConfirmed() {
@@ -160,6 +209,15 @@ async function removeConfirmed() {
         </button>
         <button type="button" class="export" title="A picture of the map as it looks now" @click="exportImage">Image</button>
       </div>
+      <div class="flex items-center gap-1.5 px-3 pb-1.5 pt-1 text-xs">
+        <span class="mr-auto text-dim">Import</span>
+        <button type="button" class="export flex items-center gap-1.5" title="Add shapes and symbols from a GeoJSON or KML file" @click="picker?.click()">
+          <Upload class="h-3.5 w-3.5" aria-hidden="true" />
+          GeoJSON or KML
+        </button>
+        <input ref="picker" type="file" accept=".geojson,.json,.kml,application/geo+json,application/vnd.google-earth.kml+xml" class="hidden" aria-label="File to import" @change="importFile" />
+      </div>
+      <p v-if="importNote" class="px-3 pb-2 text-xs leading-relaxed text-dim" role="status">{{ importNote }}</p>
     </div>
   </section>
 </template>

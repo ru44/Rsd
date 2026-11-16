@@ -35,6 +35,10 @@ const viewer = shallowRef<Cesium.Viewer | null>(null);
 const is3D = ref(true);
 const cursor = ref<LonLat | null>(null);
 const cameraHeightKm = ref(0);
+/** Which way the top of the screen faces, in degrees clockwise from north. */
+const heading = ref(0);
+/** Ground distance covered by one pixel at the middle of the view; 0 if unknown. */
+const metresPerPx = ref(0);
 /** The same, in metres and unrounded, for the zoom control. */
 const cameraHeightM = ref(0);
 /** Where a zoom still in flight is heading, so repeated presses add up. */
@@ -187,6 +191,13 @@ export function useMap() {
           ? v.camera.positionCartographic.height
           : v.camera.getMagnitude();
       cameraHeightM.value = metres;
+      heading.value = v.scene.mode === Cesium.SceneMode.SCENE3D ? Cesium.Math.toDegrees(v.camera.heading) % 360 : 0;
+      // Measure the ground between two points 100 pixels apart at mid-screen.
+      const { clientWidth: w, clientHeight: h } = v.scene.canvas;
+      const a = v.camera.pickEllipsoid(new Cesium.Cartesian2(w / 2 - 50, h / 2), v.scene.globe.ellipsoid);
+      const b = v.camera.pickEllipsoid(new Cesium.Cartesian2(w / 2 + 50, h / 2), v.scene.globe.ellipsoid);
+      metresPerPx.value =
+        a && b ? new Cesium.EllipsoidGeodesic(Cesium.Cartographic.fromCartesian(a), Cesium.Cartographic.fromCartesian(b)).surfaceDistance / 100 : 0;
       const km = metres / 1000;
       cameraHeightKm.value = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
     };
@@ -323,6 +334,18 @@ export function useMap() {
       duration: 0.35,
     });
   }
+  /** Turns the map so north is up and the view looks straight down. */
+  function resetNorth() {
+    const v = viewer.value;
+    if (!v || v.scene.mode !== Cesium.SceneMode.SCENE3D) return;
+    const at = v.camera.positionCartographic;
+    v.camera.flyTo({
+      destination: Cesium.Cartesian3.fromRadians(at.longitude, at.latitude, at.height),
+      orientation: { heading: 0, pitch: -Cesium.Math.PI_OVER_TWO, roll: 0 },
+      duration: 0.5,
+    });
+  }
+
   /** `factor` below 1 goes closer, above 1 further away. */
   const zoomBy = (factor: number) => zoomTo((zoomTarget ?? cameraHeightM.value) * factor);
 
@@ -340,6 +363,9 @@ export function useMap() {
     cursor,
     cameraHeightKm,
     cameraHeightM,
+    heading,
+    metresPerPx,
+    resetNorth,
     maxHeightM,
     zoomTo,
     zoomBy,

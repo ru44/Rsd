@@ -53,7 +53,9 @@ export function toKml(shapes: ExportShape[], symbols: ExportSymbol[]) {
     ...shapes.map((s) => {
       const color = s.color ?? DEFAULT_COLOR;
       const geometry =
-        s.geojson.type === "LineString"
+        s.geojson.type === "Point"
+          ? `<Point><coordinates>${kmlCoords([s.geojson.coordinates])}</coordinates></Point>`
+          : s.geojson.type === "LineString"
           ? `<LineString><tessellate>1</tessellate><coordinates>${kmlCoords(s.geojson.coordinates)}</coordinates></LineString>`
           : `<Polygon><tessellate>1</tessellate><outerBoundaryIs><LinearRing><coordinates>${kmlCoords(s.geojson.coordinates[0])}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
       return (

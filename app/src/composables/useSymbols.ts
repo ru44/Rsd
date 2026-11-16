@@ -5,6 +5,7 @@ import * as Cesium from "cesium";
 import { API_URL, useMap, type LonLat } from "./useMap";
 import { EDIT_PREFIX, selection } from "./selection";
 import { tool } from "./tool";
+import { clearHistory, idTracker, record } from "./history";
 
 export interface SymbolRec {
   id: number;
@@ -44,6 +45,9 @@ let flushing = false;
 let seq = 0;
 /** Entity of the symbol to select as soon as the backend has stored it. */
 let selectWhenSaved: string | null = null;
+const ids = idTracker();
+/** Where the symbol being dragged started, so the move can be undone. */
+let dragStart: [number, number] | null = null;
 
 /** All symbols live in one Cesium layer so they can be shown or hidden together. */
 function layer() {
@@ -92,8 +96,8 @@ function showRing(on: boolean) {
     }, false) as unknown as Cesium.PositionProperty,
     point: {
       pixelSize: 46,
-      color: Cesium.Color.fromCssColorString("#F2B441").withAlpha(0.12),
-      outlineColor: Cesium.Color.fromCssColorString("#F2B441"),
+      color: Cesium.Color.fromCssColorString("#FAFAFA").withAlpha(0.12),
+      outlineColor: Cesium.Color.fromCssColorString("#FAFAFA"),
       outlineWidth: 2,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     },
@@ -117,6 +121,8 @@ async function flush() {
       draw(`sym-${saved.id}`, saved.sidc, saved.geojson.coordinates);
       symbols.value.push(saved);
       unsaved.value.shift();
+      const life = lifeOf(saved);
+      record({ undo: life.end, redo: life.restore });
       // Straight after placing, the new symbol is selected, ready to adjust.
       if (selectWhenSaved === item.entityId && tool.value === "select" && !selection.value) {
         selection.value = { kind: "symbol", id: saved.id };
@@ -130,6 +136,51 @@ async function flush() {
     selectWhenSaved = null;
     flushing = false;
   }
+}
+
+/** Deletes a symbol for good. Returns false if the backend could not be reached. */
+async function removeNow(id: number) {
+  try {
+    await axios.delete(`${API}/${id}`);
+  } catch (e) {
+    offline.value = true;
+    console.error(e);
+    return false;
+  }
+  if (selection.value?.kind === "symbol" && selection.value.id === id) selection.value = null;
+  layer()?.entities.removeById(`sym-${id}`);
+  symbols.value = symbols.value.filter((s) => s.id !== id);
+  return true;
+}
+
+/** The two halves of undoing a symbol's creation or deletion. */
+function lifeOf(symbol: SymbolRec) {
+  const id = symbol.id;
+  let snap: SymbolRec = { ...symbol };
+  return {
+    async end() {
+      const now = find(ids.current(id));
+      if (!now) return;
+      snap = { ...now };
+      await removeNow(now.id);
+    },
+    async restore() {
+      const { data } = await axios.post(API, { name: snap.name, sidc: snap.sidc, geojson: snap.geojson });
+      const saved: SymbolRec = data.data;
+      draw(`sym-${saved.id}`, saved.sidc, saved.geojson.coordinates);
+      symbols.value.push(saved);
+      ids.renumber(id, saved.id);
+    },
+  };
+}
+
+/** Changes a symbol's name, code or place, on screen and in the backend. */
+function applyUpdate(id: number, patch: Partial<Pick<SymbolRec, "name" | "sidc" | "geojson">>) {
+  const s = find(id);
+  if (!s) return;
+  Object.assign(s, patch);
+  if (patch.sidc || patch.geojson) draw(`sym-${id}`, s.sidc, s.geojson.coordinates);
+  push(id, patch);
 }
 
 function place(pos: LonLat) {
@@ -164,7 +215,9 @@ export function useSymbols() {
     map.onDrag({
       start(_pos, entityId) {
         const s = selected();
-        return tool.value === "select" && !!s && (entityId === `sym-${s.id}` || entityId === RING_ID);
+        const mine = tool.value === "select" && !!s && (entityId === `sym-${s.id}` || entityId === RING_ID);
+        if (mine) dragStart = [...s!.geojson.coordinates];
+        return mine;
       },
       move(pos) {
         const s = selected();
@@ -179,7 +232,12 @@ export function useSymbols() {
       },
       end(moved) {
         const s = selected();
-        if (s && moved) push(s.id, { geojson: s.geojson });
+        if (!s || !moved || !dragStart) return;
+        push(s.id, { geojson: s.geojson });
+        const id = s.id;
+        const before = { geojson: { type: "Point" as const, coordinates: dragStart } };
+        const after = { geojson: s.geojson };
+        record({ undo: () => applyUpdate(ids.current(id), before), redo: () => applyUpdate(ids.current(id), after) });
       },
     });
     watch(visible, (show) => {
@@ -214,22 +272,26 @@ export function useSymbols() {
   function update(id: number, patch: { name?: string; sidc?: string }) {
     const s = find(id);
     if (!s) return;
-    Object.assign(s, patch);
-    if (patch.sidc) draw(`sym-${id}`, s.sidc, s.geojson.coordinates);
-    push(id, patch);
+    const before = { ...(patch.name !== undefined && { name: s.name }), ...(patch.sidc && { sidc: s.sidc }) };
+    applyUpdate(id, patch);
+    record({ undo: () => applyUpdate(ids.current(id), before), redo: () => applyUpdate(ids.current(id), patch) });
   }
 
   async function remove(id: number) {
-    try {
-      await axios.delete(`${API}/${id}`);
-    } catch (e) {
-      offline.value = true;
-      console.error(e);
-      return;
+    const s = find(id);
+    if (!s) return;
+    const life = lifeOf(s);
+    if (await removeNow(id)) record({ undo: life.restore, redo: life.end });
+  }
+
+  /** Adds symbols that were not placed by hand, as when a file is read. */
+  function addMany(items: { sidc: string; name: string; coords: [number, number] }[]) {
+    for (const item of items) {
+      const entityId = `sym-new-${++seq}`;
+      draw(entityId, item.sidc, item.coords);
+      unsaved.value.push({ entityId, ...item });
     }
-    if (selection.value?.kind === "symbol" && selection.value.id === id) selection.value = null;
-    layer()?.entities.removeById(`sym-${id}`);
-    symbols.value = symbols.value.filter((s) => s.id !== id);
+    return flush();
   }
 
   async function removeAll() {
@@ -244,6 +306,7 @@ export function useSymbols() {
     layer()?.entities.removeAll();
     symbols.value = [];
     unsaved.value = [];
+    clearHistory();
   }
 
   return {
@@ -258,5 +321,6 @@ export function useSymbols() {
     update,
     remove,
     removeAll,
+    addMany,
   };
 }

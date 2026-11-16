@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, type Component } from "vue";
 import * as Cesium from "cesium";
-import { Check, Crosshair, Flag, MapPin, Search, Share2, Shapes, X } from "lucide-vue-next";
+import { Check, Crosshair, Flag, LocateFixed, MapPin, Search, Share2, Shapes, X } from "lucide-vue-next";
 import { useMap } from "@/composables/useMap";
 import { useAreas, type Area } from "@/composables/useAreas";
 import { useSymbols, type SymbolRec } from "@/composables/useSymbols";
@@ -142,6 +142,7 @@ watch(results, () => (active.value = 0));
 function choose(r: Result | undefined) {
   if (!r) return;
   r.go();
+  located.value = false; // the one marker now shows this result
   query.value = r.title;
   open.value = false;
   field.value?.blur();
@@ -154,6 +155,7 @@ function step(by: number) {
 }
 function clear() {
   query.value = "";
+  located.value = false;
   viewer.value?.entities.removeById(PIN_ID);
   field.value?.focus();
 }
@@ -171,6 +173,39 @@ function focus() {
 watch(pressed, (down) => {
   if (down && !query.value) wide.value = false;
 });
+
+// "Where am I": asks the browser, which asks the person the first time.
+const locating = ref(false);
+const located = ref(false);
+const locateNote = ref("");
+function note(text: string) {
+  locateNote.value = text;
+  setTimeout(() => locateNote.value === text && (locateNote.value = ""), 5000);
+}
+function locate() {
+  if (located.value) {
+    // Pressed again: take the marker away.
+    viewer.value?.entities.removeById(PIN_ID);
+    located.value = false;
+    return;
+  }
+  if (!navigator.geolocation) return note("This browser cannot give a location.");
+  locating.value = true;
+  navigator.geolocation.getCurrentPosition(
+    ({ coords }) => {
+      locating.value = false;
+      located.value = true;
+      flyTo(coords.longitude, coords.latitude, closeUp(Math.max(20_000, coords.accuracy * 20)));
+      showPin(coords.longitude, coords.latitude, "You are here");
+      note(coords.accuracy > 1000 ? `Located to within about ${Math.round(coords.accuracy / 1000)} km.` : "");
+    },
+    (err) => {
+      locating.value = false;
+      note(err.code === err.PERMISSION_DENIED ? "Location is blocked for this page. Allow it in the browser to use this." : "Your location could not be found.");
+    },
+    { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 }
+  );
+}
 
 async function share() {
   copied.value = await copy();
@@ -213,6 +248,18 @@ defineExpose({ focus });
       <button
         type="button"
         class="icon-btn"
+        :class="{ 'animate-pulse': locating }"
+        :aria-pressed="located"
+        :aria-label="located ? 'Remove the marker at my location' : 'Go to my location'"
+        :title="located ? 'Remove the marker at my location' : 'Go to my location'"
+        :disabled="locating"
+        @click="locate"
+      >
+        <LocateFixed class="h-4 w-4" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        class="icon-btn"
         :class="{ 'text-paper': copied }"
         aria-label="Copy a link to this view"
         :title="copied ? 'Link copied' : 'Copy a link to this view'"
@@ -222,6 +269,7 @@ defineExpose({ focus });
       </button>
       <span class="sr-only" role="status">{{ copied ? "Link copied" : "" }}</span>
     </div>
+    <p v-if="locateNote" class="max-w-[16rem] border-t border-edge px-3 py-2 text-xs leading-relaxed text-dim" role="status">{{ locateNote }}</p>
 
     <template v-if="open">
       <ul v-if="results.length" id="find-results" role="listbox" class="max-h-80 overflow-y-auto border-t border-edge p-1">
