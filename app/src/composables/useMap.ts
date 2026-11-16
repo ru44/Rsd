@@ -1,4 +1,4 @@
-import { ref, shallowRef } from "vue";
+import { computed, ref, shallowRef } from "vue";
 import * as Cesium from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 
@@ -35,6 +35,16 @@ const viewer = shallowRef<Cesium.Viewer | null>(null);
 const is3D = ref(true);
 const cursor = ref<LonLat | null>(null);
 const cameraHeightKm = ref(0);
+/** The same, in metres and unrounded, for the zoom control. */
+const cameraHeightM = ref(0);
+/** Where a zoom still in flight is heading, so repeated presses add up. */
+let zoomTarget: number | null = null;
+export const MIN_HEIGHT_M = 30;
+// Furthest out: the globe just fills the window, and the flat map shows the
+// whole world. Any further and there is only space to look at.
+const MAX_GLOBE_M = 20_000_000;
+const MAX_FLAT_M = 40_000_000;
+const maxHeightM = computed(() => (is3D.value ? MAX_GLOBE_M : MAX_FLAT_M));
 const hasSatellite = ref(false);
 const baseMap = ref<BaseMapId>("world");
 /** The map object under the pointer, for choosing the mouse cursor. */
@@ -165,6 +175,9 @@ export function useMap() {
     v.camera.setView({
       destination: Cesium.Cartesian3.fromDegrees(39.2056453, 21.5891922, 6_000_000),
     });
+    // The mouse wheel stops where the zoom buttons do.
+    v.scene.screenSpaceCameraController.maximumZoomDistance = MAX_GLOBE_M;
+    v.scene.screenSpaceCameraController.minimumZoomDistance = MIN_HEIGHT_M;
 
     const updateHeight = () => {
       // In the flat 2D view the camera has no meaningful altitude, so report
@@ -173,12 +186,17 @@ export function useMap() {
         v.scene.mode === Cesium.SceneMode.SCENE3D
           ? v.camera.positionCartographic.height
           : v.camera.getMagnitude();
+      cameraHeightM.value = metres;
       const km = metres / 1000;
       cameraHeightKm.value = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
     };
     v.camera.percentageChanged = 0.02;
     v.camera.changed.addEventListener(updateHeight);
     v.scene.morphComplete.addEventListener(updateHeight);
+    v.camera.moveEnd.addEventListener(() => {
+      zoomTarget = null;
+      updateHeight();
+    });
     // Read once more after the first frame: a view set before then (from a
     // shared link) does not count as a change.
     const afterFirstFrame = v.scene.postRender.addEventListener(() => {
@@ -267,6 +285,14 @@ export function useMap() {
   function toggleMode() {
     const v = viewer.value;
     if (!v) return;
+    // Cesium goes back to the whole world when it changes shape, so put the
+    // view back over the same place, from the same distance, afterwards.
+    const at = v.camera.positionCartographic.clone();
+    const height = cameraHeightM.value || at.height;
+    const restore = v.scene.morphComplete.addEventListener(() => {
+      restore();
+      v.camera.setView({ destination: Cesium.Cartesian3.fromRadians(at.longitude, at.latitude, height) });
+    });
     is3D.value = !is3D.value;
     if (is3D.value) v.scene.morphTo3D(0.8);
     else v.scene.morphTo2D(0.8);
@@ -284,6 +310,22 @@ export function useMap() {
     applyBaseMap();
   }
 
+  /** Keeps looking at the same place, from `heightM` up. */
+  function zoomTo(heightM: number) {
+    const v = viewer.value;
+    if (!v || !Number.isFinite(heightM)) return;
+    const h = Math.min(maxHeightM.value, Math.max(MIN_HEIGHT_M, heightM));
+    zoomTarget = h;
+    const at = v.camera.positionCartographic;
+    v.camera.flyTo({
+      destination: Cesium.Cartesian3.fromRadians(at.longitude, at.latitude, h),
+      orientation: { heading: v.camera.heading, pitch: v.camera.pitch, roll: v.camera.roll },
+      duration: 0.35,
+    });
+  }
+  /** `factor` below 1 goes closer, above 1 further away. */
+  const zoomBy = (factor: number) => zoomTo((zoomTarget ?? cameraHeightM.value) * factor);
+
   /** Moves the view to look straight down at a place from `heightM` up. */
   function flyTo(lon: number, lat: number, heightM: number) {
     viewer.value?.camera.flyTo({
@@ -297,6 +339,10 @@ export function useMap() {
     is3D,
     cursor,
     cameraHeightKm,
+    cameraHeightM,
+    maxHeightM,
+    zoomTo,
+    zoomBy,
     hasSatellite,
     baseMap,
     hover,

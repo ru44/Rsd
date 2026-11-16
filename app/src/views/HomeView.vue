@@ -19,7 +19,7 @@ import { useViewLink } from "@/composables/useViewLink";
 import { useRuler } from "@/composables/useRuler";
 import { pickerOpen, tool, type Tool } from "@/composables/tool";
 
-const { toggleMode } = useMap();
+const { toggleMode, zoomBy } = useMap();
 const areas = useAreas();
 const symbols = useSymbols();
 const { attach: attachGrid } = useMgrsGrid();
@@ -64,6 +64,10 @@ function onKey(e: KeyboardEvent) {
     e.preventDefault(); // keep the letter out of the picker's search box
   } else if (key === "g") {
     toggleMode();
+  } else if (key === "+" || key === "=") {
+    zoomBy(0.5);
+  } else if (key === "-") {
+    zoomBy(2);
   } else if (key === "/") {
     e.preventDefault();
     find.value?.focus();
