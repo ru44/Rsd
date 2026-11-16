@@ -5,7 +5,7 @@ import { selection } from "@/composables/selection";
 import { AREA_COLORS, useAreas } from "@/composables/useAreas";
 import { symbolImage, useSymbols } from "@/composables/useSymbols";
 import { AFFILIATIONS, getAffiliation, parseSidc, setAffiliation } from "@/lib/sidc";
-import { SHAPE_LABEL, kindOf, measure, pointsOf } from "@/lib/shapes";
+import { SHAPE_LABEL, kindOf, measurements, pointsOf } from "@/lib/shapes";
 
 // Shows the selected shape or symbol and what can be changed about it.
 const areas = useAreas();
@@ -35,10 +35,11 @@ const codeRejected = computed(() => !!symbol.value && code.value !== symbol.valu
 
 const kind = computed(() => (area.value ? kindOf(area.value) : null));
 const title = computed(() => (kind.value ? SHAPE_LABEL[kind.value] : "Symbol"));
-/** The shape's size. Follows the pointer while the shape is being dragged. */
-const size = computed(() =>
-  area.value && kind.value ? areas.liveMeasure.value || measure(kind.value, pointsOf(area.value.geojson)) : ""
-);
+/** The shape's measurements. They follow the pointer while the shape is being dragged. */
+const size = computed(() => {
+  if (!area.value || !kind.value) return [];
+  return areas.liveMeasure.value.length ? areas.liveMeasure.value : measurements(kind.value, pointsOf(area.value.geojson));
+});
 const HELP = {
   polygon: "Drag a corner to reshape. Drag a small dot to add a corner. Drag inside to move. Right-click a corner to remove it.",
   line: "Drag a point to reshape. Drag a small dot to add a point. Drag the line to move it. Right-click a point to remove it.",
@@ -100,7 +101,12 @@ function remove() {
             />
           </div>
         </div>
-        <p v-if="size" class="font-mono text-signal">{{ size }}</p>
+        <dl v-if="size.length" class="grid select-text grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 border-y border-edge py-2">
+          <template v-for="[label, value] in size" :key="label">
+            <dt class="text-xs leading-5 text-dim">{{ label }}</dt>
+            <dd class="text-right font-mono text-signal">{{ value }}</dd>
+          </template>
+        </dl>
         <p class="text-xs leading-relaxed text-dim">{{ HELP[kind!] }}</p>
       </template>
 

@@ -2,11 +2,13 @@
 import { computed } from "vue";
 import { useAreas } from "@/composables/useAreas";
 import { useSymbols } from "@/composables/useSymbols";
+import { useRuler } from "@/composables/useRuler";
 import { tool } from "@/composables/tool";
 
 // Says what the active tool expects next, with its finish and cancel actions.
 const { pointCount, draftInfo, finishDraw } = useAreas();
 const { placing } = useSymbols();
+const ruler = useRuler();
 
 const text = computed(() => {
   const n = pointCount.value;
@@ -23,23 +25,34 @@ const text = computed(() => {
       if (n === 0) return "Click the map to start the line.";
       if (n === 1) return "Click the next point.";
       return `${n} points, ${draftInfo.value}. Click to add more, or finish.`;
+    case "ruler":
+      if (ruler.count.value === 0) return "Click the map to start measuring.";
+      if (!ruler.info.value) return "Click the next point.";
+      return ruler.done.value ? `${ruler.info.value}. Click to measure again.` : ruler.info.value;
     case "symbol":
       return placing.value ? `Click the map to place ${placing.value.name.toLowerCase()}.` : "";
     default:
       return "";
   }
 });
-const finishable = computed(() => tool.value === "polygon" || tool.value === "line");
-const canFinish = computed(() => pointCount.value >= (tool.value === "line" ? 2 : 3));
+const finishable = computed(
+  () => tool.value === "polygon" || tool.value === "line" || (tool.value === "ruler" && !ruler.done.value)
+);
+const canFinish = computed(() =>
+  tool.value === "ruler" ? ruler.count.value >= 2 : pointCount.value >= (tool.value === "line" ? 2 : 3)
+);
+const finish = () => (tool.value === "ruler" ? ruler.finish() : finishDraw());
 </script>
 
 <template>
   <div v-if="text" class="panel flex max-w-md items-center gap-3 py-1.5 pl-3 pr-1.5 text-sm" role="status">
-    <span>{{ text }}</span>
-    <button v-if="finishable" type="button" class="act bg-signal text-ink" :disabled="!canFinish" @click="finishDraw">
+    <span :class="{ 'font-mono': tool === 'ruler' && ruler.info.value }">{{ text }}</span>
+    <button v-if="finishable" type="button" class="act bg-signal text-ink" :disabled="!canFinish" @click="finish">
       Finish
     </button>
-    <button type="button" class="act text-dim hover:text-paper" @click="tool = 'select'">Cancel</button>
+    <button type="button" class="act text-dim hover:text-paper" @click="tool = 'select'">
+      {{ tool === "ruler" ? "Done" : "Cancel" }}
+    </button>
   </div>
 </template>
 

@@ -11,6 +11,7 @@ import {
   distanceM,
   kindOf,
   measure,
+  measurements,
   pathLengthM,
   formatDistance,
   pointsOf,
@@ -20,6 +21,7 @@ import {
   type Pt,
   type ShapeGeo,
   type ShapeKind,
+  type Stat,
 } from "@/lib/shapes";
 
 // Everything drawn on the map that is not a symbol: areas, rectangles,
@@ -53,7 +55,7 @@ const pointCount = ref(0);
 /** Size of the shape being drawn, for the prompt: "Radius 3.2 km". */
 const draftInfo = ref("");
 /** Size of the selected shape, kept up to date while it is dragged. */
-const liveMeasure = ref("");
+const liveMeasure = ref<Stat[]>([]);
 const offline = ref(false);
 const visible = ref(true);
 
@@ -329,7 +331,7 @@ function beginEdit(id: number) {
   const kind = kindOf(area);
   const pts = pointsOf(area.geojson);
   editing = { id, kind, pts, ...(kind === "circle" ? circleOf(pts) : {}) };
-  liveMeasure.value = measure(kind, pts);
+  liveMeasure.value = measurements(kind, pts);
   // While editing, the shape is read from `editing.pts` every frame, so it
   // follows the pointer during a drag.
   const live = () => editing?.pts ?? pts;
@@ -348,7 +350,7 @@ function endEdit() {
   const area = find(editing.id);
   editing = null;
   drag = null;
-  liveMeasure.value = "";
+  liveMeasure.value = [];
   removeHandles();
   if (area) redraw(area); // back to a fixed shape
 }
@@ -378,7 +380,7 @@ export function useAreas() {
       const least = editing.kind === "polygon" ? 3 : editing.kind === "line" ? 2 : Infinity;
       if (editing.pts.length > least) {
         editing.pts.splice(+corner[1], 1);
-        liveMeasure.value = measure(editing.kind, editing.pts);
+        liveMeasure.value = measurements(editing.kind, editing.pts);
         showHandles();
         commitShape();
         return true;
@@ -441,7 +443,7 @@ export function useAreas() {
           }
           drag.last = pos;
         }
-        liveMeasure.value = measure(editing.kind, editing.pts);
+        liveMeasure.value = measurements(editing.kind, editing.pts);
       },
       end(moved) {
         if (dragFrom) {

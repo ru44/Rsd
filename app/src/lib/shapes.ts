@@ -102,11 +102,71 @@ export function formatArea(m2: number): string {
   return `${round(km2, km2 < 100 ? 1 : 0)} km²`;
 }
 
+/** Compass bearing from `a` to `b`, in degrees clockwise from north. */
+export function bearingDeg(a: Pt, b: Pt): number {
+  const dLon = rad(b[0] - a[0]);
+  const y = Math.sin(dLon) * Math.cos(rad(b[1]));
+  const x = Math.cos(rad(a[1])) * Math.sin(rad(b[1])) - Math.sin(rad(a[1])) * Math.cos(rad(b[1])) * Math.cos(dLon);
+  return (deg(Math.atan2(y, x)) + 360) % 360;
+}
+
+/** A bearing the way it is read out: three digits, "045°". */
+export function formatBearing(d: number): string {
+  return `${String(Math.round(d) % 360).padStart(3, "0")}°`;
+}
+
+/** A named measurement: ["Radius", "3.2 km"]. */
+export type Stat = [label: string, value: string];
+
+/** Everything worth knowing about a shape's size, one measurement per row. */
+export function measurements(kind: ShapeKind, pts: Pt[]): Stat[] {
+  if (kind === "line") {
+    if (pts.length < 2) return [];
+    const [first, last] = [pts[0], pts[pts.length - 1]];
+    const rows: Stat[] = [["Length", formatDistance(pathLengthM(pts))]];
+    if (pts.length > 2) rows.push(["Start to end", formatDistance(distanceM(first, last))]);
+    rows.push(["Bearing", formatBearing(bearingDeg(first, last))]);
+    return rows;
+  }
+  if (pts.length < 3) return [];
+  if (kind === "circle") {
+    const r = circleOf(pts).radiusM;
+    return [
+      ["Radius", formatDistance(r)],
+      ["Diameter", formatDistance(2 * r)],
+      // On a sphere, not a flat sheet: it matters for circles hundreds of km wide.
+      ["Circumference", formatDistance(2 * Math.PI * R * Math.sin(r / R))],
+      ["Area", formatArea(2 * Math.PI * R * R * (1 - Math.cos(r / R)))],
+    ];
+  }
+  if (kind === "rect") {
+    const lons = pts.map((p) => p[0]);
+    const lats = pts.map((p) => p[1]);
+    const [w, e, s, n] = [Math.min(...lons), Math.max(...lons), Math.min(...lats), Math.max(...lats)];
+    const { widthM, heightM } = rectSize(pts);
+    // The sides run along parallels, so the top and bottom differ in length.
+    const along = (lat: number) => rad(e - w) * R * Math.cos(rad(lat));
+    return [
+      ["Width", formatDistance(widthM)],
+      ["Height", formatDistance(heightM)],
+      ["Perimeter", formatDistance(along(s) + along(n) + 2 * heightM)],
+      ["Area", formatArea(rad(e - w) * R * R * (Math.sin(rad(n)) - Math.sin(rad(s))))],
+    ];
+  }
+  return [
+    ["Area", formatArea(ringAreaM2(pts))],
+    ["Perimeter", formatDistance(pathLengthM(pts, true))],
+  ];
+}
+
 /** One line of measurements for a shape, e.g. "Radius 3.2 km". */
 export function measure(kind: ShapeKind, pts: Pt[]): string {
   if (kind === "line") return pts.length > 1 ? `Length ${formatDistance(pathLengthM(pts))}` : "";
   if (pts.length < 3) return "";
-  if (kind === "circle") return `Radius ${formatDistance(circleOf(pts).radiusM)}`;
+  if (kind === "circle") {
+    const r = circleOf(pts).radiusM;
+    return `Radius ${formatDistance(r)}, diameter ${formatDistance(2 * r)}`;
+  }
   if (kind === "rect") {
     const { widthM, heightM } = rectSize(pts);
     return `${formatDistance(widthM)} × ${formatDistance(heightM)}`;

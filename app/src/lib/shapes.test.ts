@@ -6,7 +6,10 @@ import {
   distanceM,
   formatArea,
   formatDistance,
+  bearingDeg,
+  formatBearing,
   measure,
+  measurements,
   pathLengthM,
   rectRing,
   rectSize,
@@ -83,10 +86,44 @@ describe("measuring", () => {
     expect(formatArea(12_400_000)).toBe("12.4 km²");
   });
   it("describes each kind of shape", () => {
-    expect(measure("circle", circleRing(JEDDAH, 3200))).toBe("Radius 3.2 km");
+    expect(measure("circle", circleRing(JEDDAH, 3200))).toBe("Radius 3.2 km, diameter 6.4 km");
     expect(measure("line", [[0, 0], [0, 1]])).toMatch(/^Length 111(\.\d)? km$/);
     expect(measure("rect", rectRing([0, 0], [1, 1]))).toMatch(/^111(\.\d)? km × 111(\.\d)? km$/);
     expect(measure("polygon", rectRing([0, 0], [1, 1]))).toMatch(/^Area 12,3\d\d km²$/);
     expect(measure("polygon", [[0, 0]])).toBe("");
+  });
+});
+
+describe("measurements", () => {
+  const row = (rows: [string, string][], label: string) => rows.find((r) => r[0] === label)?.[1];
+  it("gives a circle its radius, diameter, circumference and area", () => {
+    const rows = measurements("circle", circleRing(JEDDAH, 1000));
+    expect(rows.map((r) => r[0])).toEqual(["Radius", "Diameter", "Circumference", "Area"]);
+    expect(row(rows, "Radius")).toBe("1 km");
+    expect(row(rows, "Diameter")).toBe("2 km");
+    expect(row(rows, "Circumference")).toBe("6.3 km");
+    expect(row(rows, "Area")).toBe("3.1 km²");
+  });
+  it("gives a rectangle its sides, perimeter and area", () => {
+    const rows = measurements("rect", rectRing([0, 0], [1, 1]));
+    expect(row(rows, "Width")).toMatch(/^111/);
+    expect(row(rows, "Perimeter")).toMatch(/^44[45] km$/);
+    expect(row(rows, "Area")).toMatch(/^12,3\d\d km²$/);
+  });
+  it("gives an area its size and the length of its edge", () => {
+    const rows = measurements("polygon", rectRing([0, 0], [1, 1]));
+    expect(row(rows, "Area")).toMatch(/^12,3\d\d km²$/);
+    expect(row(rows, "Perimeter")).toMatch(/^44[45] km$/);
+  });
+  it("gives a line its length and bearing", () => {
+    expect(measurements("line", [[0, 0], [1, 0]])).toEqual([["Length", "111 km"], ["Bearing", "090°"]]);
+    expect(row(measurements("line", [[0, 0], [1, 0], [1, 1]]), "Start to end")).toMatch(/^157/);
+    expect(measurements("line", [[0, 0]])).toEqual([]);
+  });
+  it("reads bearings clockwise from north", () => {
+    expect(bearingDeg([0, 0], [0, 1])).toBeCloseTo(0);
+    expect(bearingDeg([0, 0], [-1, 0])).toBeCloseTo(270);
+    expect(formatBearing(45.4)).toBe("045°");
+    expect(formatBearing(359.7)).toBe("000°");
   });
 });

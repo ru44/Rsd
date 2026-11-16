@@ -16,6 +16,7 @@ import { useMgrsGrid } from "@/composables/useMgrsGrid";
 import { useClearView } from "@/composables/useClearView";
 import { useSelection } from "@/composables/useSelection";
 import { useViewLink } from "@/composables/useViewLink";
+import { useRuler } from "@/composables/useRuler";
 import { pickerOpen, tool, type Tool } from "@/composables/tool";
 
 const { toggleMode } = useMap();
@@ -25,9 +26,10 @@ const { attach: attachGrid } = useMgrsGrid();
 const { clear, hint, exit: exitClearView, toggle: toggleClearView } = useClearView();
 const { selection, deselect } = useSelection();
 const { attach: attachViewLink } = useViewLink();
+const ruler = useRuler();
 const find = ref<InstanceType<typeof FindBox> | null>(null);
 
-const TOOL_KEYS: Record<string, Tool> = { h: "hand", v: "select", r: "rect", c: "circle", p: "polygon", l: "line" };
+const TOOL_KEYS: Record<string, Tool> = { h: "hand", v: "select", r: "rect", c: "circle", p: "polygon", l: "line", m: "ruler" };
 
 function pickSymbol(sidc: string, name: string) {
   pickerOpen.value = false;
@@ -67,6 +69,7 @@ function onKey(e: KeyboardEvent) {
     find.value?.focus();
   } else if (e.key === "Enter") {
     areas.finishDraw();
+    ruler.finish();
   } else if ((e.key === "Delete" || e.key === "Backspace") && selection.value) {
     if (selection.value.kind === "area") areas.remove(selection.value.id);
     else symbols.remove(selection.value.id);

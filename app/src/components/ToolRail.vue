@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Component } from "vue";
-import { Circle, Flag, Globe, Hand, Map, Maximize, MousePointer2, Pentagon, Square, Waypoints } from "lucide-vue-next";
+import { Circle, Flag, Globe, Hand, Map, Maximize, MousePointer2, Pentagon, Ruler, Square, Waypoints } from "lucide-vue-next";
 import { useMap } from "@/composables/useMap";
 import { useClearView } from "@/composables/useClearView";
 import { isDrawTool, pickerOpen, tool, type Tool } from "@/composables/tool";
@@ -28,7 +28,7 @@ const DRAW: Item[] = [
 // Only one tool is active at a time. Pressing a drawing tool again puts it down.
 function choose(id: Tool) {
   pickerOpen.value = false;
-  tool.value = isDrawTool(id) && tool.value === id ? "select" : id;
+  tool.value = (isDrawTool(id) || id === "ruler") && tool.value === id ? "select" : id;
 }
 function toggleSymbols() {
   if (tool.value === "symbol") {
@@ -71,6 +71,18 @@ function toggleSymbols() {
       <Flag class="h-5 w-5" aria-hidden="true" />
       <span class="key" aria-hidden="true">S</span>
       <span class="tip" aria-hidden="true">Military symbol</span>
+    </button>
+    <button
+      type="button"
+      class="tool"
+      aria-label="Measure distance"
+      aria-keyshortcuts="M"
+      :aria-pressed="tool === 'ruler'"
+      @click="choose('ruler')"
+    >
+      <Ruler class="h-5 w-5" aria-hidden="true" />
+      <span class="key" aria-hidden="true">M</span>
+      <span class="tip" aria-hidden="true">Measure distance</span>
     </button>
 
     <button
