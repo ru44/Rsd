@@ -194,7 +194,13 @@ export function useMap() {
     });
 
     // Open the app with ?fps in the address to see how fast the map is drawing.
-    if (new URLSearchParams(location.search).has("fps")) v.scene.debugShowFramesPerSecond = true;
+    // The app normally draws a frame only when something changes, which makes
+    // a frame counter read low while the map is still. So with ?fps it draws
+    // all the time, and the number shows what the machine can really do (60 at most).
+    if (new URLSearchParams(location.search).has("fps")) {
+      v.scene.debugShowFramesPerSecond = true;
+      v.scene.requestRenderMode = false;
+    }
 
     // Default double-click zooms onto an entity and locks the camera to it.
     v.cesiumWidget.screenSpaceEventHandler.removeInputAction(
