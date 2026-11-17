@@ -6,6 +6,8 @@ export interface ExportShape {
   name: string;
   color?: string | null;
   shape?: string | null;
+  floor_m?: number | null;
+  ceiling_m?: number | null;
   geojson: ShapeGeo;
 }
 export interface ExportSymbol {
@@ -24,7 +26,13 @@ export function toGeoJson(shapes: ExportShape[], symbols: ExportSymbol[]) {
     features: [
       ...shapes.map((s) => ({
         type: "Feature" as const,
-        properties: { kind: kindOf(s), name: s.name, color: s.color ?? DEFAULT_COLOR },
+        properties: {
+          kind: kindOf(s),
+          name: s.name,
+          color: s.color ?? DEFAULT_COLOR,
+          // Only volumes carry heights: metres above sea level.
+          ...((s.ceiling_m ?? 0) > (s.floor_m ?? 0) && { floor_m: s.floor_m ?? 0, ceiling_m: s.ceiling_m }),
+        },
         geometry: s.geojson,
       })),
       ...symbols.map((s) => ({

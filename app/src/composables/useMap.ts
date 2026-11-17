@@ -37,6 +37,10 @@ const cursor = ref<LonLat | null>(null);
 const cameraHeightKm = ref(0);
 /** Which way the top of the screen faces, in degrees clockwise from north. */
 const heading = ref(0);
+/** How far the view leans: -90 looks straight down, 0 looks at the horizon. */
+const pitch = ref(-90);
+/** Re-reads height, heading and the rest from the camera. */
+let refresh = () => {};
 /** Ground distance covered by one pixel at the middle of the view; 0 if unknown. */
 const metresPerPx = ref(0);
 /** The same, in metres and unrounded, for the zoom control. */
@@ -192,6 +196,7 @@ export function useMap() {
           : v.camera.getMagnitude();
       cameraHeightM.value = metres;
       heading.value = v.scene.mode === Cesium.SceneMode.SCENE3D ? Cesium.Math.toDegrees(v.camera.heading) % 360 : 0;
+      pitch.value = v.scene.mode === Cesium.SceneMode.SCENE3D ? Cesium.Math.toDegrees(v.camera.pitch) : -90;
       // Measure the ground between two points 100 pixels apart at mid-screen.
       const { clientWidth: w, clientHeight: h } = v.scene.canvas;
       const a = v.camera.pickEllipsoid(new Cesium.Cartesian2(w / 2 - 50, h / 2), v.scene.globe.ellipsoid);
@@ -201,6 +206,7 @@ export function useMap() {
       const km = metres / 1000;
       cameraHeightKm.value = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
     };
+    refresh = updateHeight;
     v.camera.percentageChanged = 0.02;
     v.camera.changed.addEventListener(updateHeight);
     v.scene.morphComplete.addEventListener(updateHeight);
@@ -334,16 +340,37 @@ export function useMap() {
       duration: 0.35,
     });
   }
-  /** Turns the map so north is up and the view looks straight down. */
-  function resetNorth() {
+  /** The place on the ground at the middle of the screen. */
+  function centre(v: Cesium.Viewer) {
+    const { clientWidth: w, clientHeight: h } = v.scene.canvas;
+    return v.camera.pickEllipsoid(new Cesium.Cartesian2(w / 2, h / 2), v.scene.globe.ellipsoid);
+  }
+
+  /** Swings the view round the middle of the screen to face and lean a new way. */
+  function orbit(headingDeg: number, pitchDeg: number, duration = 0.5) {
     const v = viewer.value;
     if (!v || v.scene.mode !== Cesium.SceneMode.SCENE3D) return;
-    const at = v.camera.positionCartographic;
-    v.camera.flyTo({
-      destination: Cesium.Cartesian3.fromRadians(at.longitude, at.latitude, at.height),
-      orientation: { heading: 0, pitch: -Cesium.Math.PI_OVER_TWO, roll: 0 },
-      duration: 0.5,
+    const mid = centre(v);
+    if (!mid) return;
+    const range = Cesium.Cartesian3.distance(v.camera.positionWC, mid);
+    v.camera.flyToBoundingSphere(new Cesium.BoundingSphere(mid, 0), {
+      offset: new Cesium.HeadingPitchRange(Cesium.Math.toRadians(headingDeg), Cesium.Math.toRadians(pitchDeg), range),
+      duration,
     });
+  }
+
+  /** Turns the map so north is up, keeping how far it leans. */
+  const resetNorth = () => orbit(0, pitch.value);
+  /** Leans the view over to see height, or stands it back up to look straight down. */
+  const toggleTilt = () => orbit(heading.value, pitch.value < -80 ? -40 : -90);
+  /** Spins the map about the middle of the screen, clockwise for positive degrees. */
+  function rotateBy(deg: number) {
+    const v = viewer.value;
+    if (!v || v.scene.mode !== Cesium.SceneMode.SCENE3D) return;
+    const mid = centre(v);
+    if (!mid) return;
+    v.camera.rotate(Cesium.Cartesian3.normalize(mid, new Cesium.Cartesian3()), Cesium.Math.toRadians(deg));
+    refresh();
   }
 
   /** `factor` below 1 goes closer, above 1 further away. */
@@ -364,8 +391,11 @@ export function useMap() {
     cameraHeightKm,
     cameraHeightM,
     heading,
+    pitch,
     metresPerPx,
     resetNorth,
+    toggleTilt,
+    rotateBy,
     maxHeightM,
     zoomTo,
     zoomBy,

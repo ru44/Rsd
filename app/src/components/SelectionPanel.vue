@@ -2,10 +2,11 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { Trash2, X } from "lucide-vue-next";
 import { selection } from "@/composables/selection";
-import { AREA_COLORS, useAreas } from "@/composables/useAreas";
+import { AREA_COLORS, useAreas, volumeOf } from "@/composables/useAreas";
 import { symbolImage, useSymbols } from "@/composables/useSymbols";
 import { AFFILIATIONS, getAffiliation, parseSidc, setAffiliation } from "@/lib/sidc";
-import { SHAPE_LABEL, kindOf, measurements, pointsOf } from "@/lib/shapes";
+import { SHAPE_LABEL, isPath, kindOf, measurements, pointsOf, volumeStats } from "@/lib/shapes";
+import { useMap } from "@/composables/useMap";
 
 // Shows the selected shape or symbol and what can be changed about it.
 const areas = useAreas();
@@ -39,8 +40,41 @@ const title = computed(() => (kind.value ? SHAPE_LABEL[kind.value] : "Symbol"));
 /** The shape's measurements. They follow the pointer while the shape is being dragged. */
 const size = computed(() => {
   if (!area.value || !kind.value) return [];
-  return areas.liveMeasure.value.length ? areas.liveMeasure.value : measurements(kind.value, pointsOf(area.value.geojson));
+  const pts = pointsOf(area.value.geojson);
+  const flat = areas.liveMeasure.value.length ? areas.liveMeasure.value : measurements(kind.value, pts);
+  const vol = volumeOf(area.value);
+  return vol ? [...flat, ...volumeStats(kind.value, pts, vol.floor, vol.top)] : flat;
 });
+
+// A closed shape can be given a bottom and a top height, which makes it a
+// volume: a block of space instead of a patch of ground.
+const { pitch, toggleTilt } = useMap();
+const canStand = computed(() => !!kind.value && !isPath(kind.value) && kind.value !== "text");
+const bottom = ref("");
+const top = ref("");
+watch(
+  () => [area.value?.id, area.value?.floor_m, area.value?.ceiling_m],
+  () => {
+    const vol = area.value && volumeOf(area.value);
+    bottom.value = vol ? String(vol.floor) : "";
+    top.value = vol ? String(vol.top) : "";
+  },
+  { immediate: true }
+);
+const heightsRejected = ref(false);
+function saveHeights() {
+  if (!area.value) return;
+  const [b, t] = [bottom.value.trim() === "" ? 0 : Number(bottom.value), top.value.trim() === "" ? 0 : Number(top.value)];
+  // An empty top makes the shape flat again. Otherwise the top must be above the bottom.
+  heightsRejected.value = !Number.isFinite(b) || !Number.isFinite(t) || (top.value.trim() !== "" && t <= b);
+  if (heightsRejected.value) return;
+  const now = volumeOf(area.value);
+  const next = t > b ? { floor_m: b, ceiling_m: t } : { floor_m: 0, ceiling_m: 0 };
+  if ((now?.floor ?? 0) === next.floor_m && (now?.top ?? 0) === next.ceiling_m) return;
+  const first = !now && t > b;
+  areas.update(area.value.id, next);
+  if (first && pitch.value < -80) toggleTilt(); // lean the view over so the height can be seen
+}
 const HELP = {
   polygon: "Drag a corner to reshape. Drag a small dot to add a corner. Drag inside to move. Right-click a corner to remove it.",
   line: "Drag a point to reshape. Drag a small dot to add a point. Drag the line to move it. Right-click a point to remove it.",
@@ -120,6 +154,20 @@ function remove() {
             <dd class="text-right font-mono text-signal">{{ value }}</dd>
           </template>
         </dl>
+        <fieldset v-if="canStand">
+          <legend class="mb-1 text-xs text-dim">Height, to make it a 3D volume (metres above sea level)</legend>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block">
+              <span class="sr-only">Bottom height in metres</span>
+              <input v-model="bottom" type="text" inputmode="decimal" placeholder="Bottom, 0" class="field font-mono text-xs" :aria-invalid="heightsRejected" @blur="saveHeights" @keydown.enter="saveHeights" />
+            </label>
+            <label class="block">
+              <span class="sr-only">Top height in metres</span>
+              <input v-model="top" type="text" inputmode="decimal" placeholder="Top, e.g. 3000" class="field font-mono text-xs" :aria-invalid="heightsRejected" @blur="saveHeights" @keydown.enter="saveHeights" />
+            </label>
+          </div>
+          <span v-if="heightsRejected" class="mt-1 block text-xs text-hostile">Use numbers, with the top above the bottom.</span>
+        </fieldset>
         <p class="text-xs leading-relaxed text-dim">{{ HELP[kind!] }}</p>
       </template>
 

@@ -64,6 +64,9 @@ const INIT_SQL: &str =
     -- Ensure existing installations get the color column if it wasn't present
     ALTER TABLE areas ADD COLUMN IF NOT EXISTS color TEXT;
     ALTER TABLE areas ADD COLUMN IF NOT EXISTS shape TEXT;
+    -- A volume: metres above sea level of its bottom and top.
+    ALTER TABLE areas ADD COLUMN IF NOT EXISTS floor_m DOUBLE PRECISION;
+    ALTER TABLE areas ADD COLUMN IF NOT EXISTS ceiling_m DOUBLE PRECISION;
 
     -- Older installations only allowed polygons; lines are stored here too.
     DO $$

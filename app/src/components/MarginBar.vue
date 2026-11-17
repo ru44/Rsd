@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { Box } from "lucide-vue-next";
 import { useMap } from "@/composables/useMap";
 import { useAreas } from "@/composables/useAreas";
 import { useSymbols } from "@/composables/useSymbols";
@@ -11,7 +12,8 @@ import { COORD_FORMATS, formatCoord, type CoordFormat } from "@/lib/coords";
 
 // Along the bottom edge: where the pointer is, how far out the view is, and
 // whether the work is stored.
-const { cursor, is3D, cameraHeightKm, cameraHeightM, baseMap } = useMap();
+const { cursor, is3D, cameraHeightKm, cameraHeightM, baseMap, pitch, toggleTilt } = useMap();
+const leaning = computed(() => pitch.value > -80);
 const areas = useAreas();
 const symbols = useSymbols();
 
@@ -35,8 +37,8 @@ const credit = computed(() =>
   baseMap.value === "streets"
     ? "© OpenStreetMap contributors"
     : baseMap.value === "satellite"
-      ? "satellite tiles from the backend"
-      : "Natural Earth"
+      ? "Satellite tiles from the backend"
+      : "Natural Earth · CesiumJS"
 );
 
 const offline = computed(() => areas.offline.value || symbols.offline.value);
@@ -78,15 +80,39 @@ async function retry() {
       <button type="button" class="h-8 rounded-md border border-edge px-2.5 font-medium text-paper hover:bg-raised" @click="retry">Retry</button>
     </div>
 
-    <ScaleBar class="ml-auto hidden shrink-0 lg:flex" />
-    <CompassButton class="ml-auto shrink-0 lg:ml-0" />
-    <ZoomControl class="shrink-0" />
-    <div class="panel hidden h-10 items-center gap-3 whitespace-nowrap px-3 text-dim xl:flex">
-      <span>
+    <!-- One quiet line: scale, how far out the view is, and who made the map. -->
+    <div class="ml-auto flex h-6 min-w-0 items-center gap-3 whitespace-nowrap rounded-md bg-ink/70 px-2 text-[11px] text-dim backdrop-blur-sm">
+      <ScaleBar class="hidden md:flex" />
+      <span class="hidden lg:inline">
         {{ is3D ? "Eye altitude" : "View width" }}
         <span class="font-mono tabular-nums text-paper">{{ cameraHeightKm >= 1 ? `${cameraHeightKm.toLocaleString()} km` : `${Math.round(cameraHeightM)} m` }}</span>
       </span>
-      <span class="hidden border-l border-edge pl-3 2xl:inline">CesiumJS · {{ credit }}</span>
+      <span class="truncate">{{ credit }}</span>
+    </div>
+
+    <!-- Getting around: turn, lean, zoom. -->
+    <div class="flex shrink-0 flex-col items-center gap-2">
+      <CompassButton />
+      <div class="panel p-1">
+        <button
+          type="button"
+          class="icon-btn"
+          :aria-pressed="leaning"
+          :disabled="!is3D"
+          :aria-label="leaning ? 'Look straight down' : 'Lean the view to see height'"
+          :title="!is3D ? 'The flat map cannot lean' : leaning ? 'Look straight down ( 3 )' : 'Lean the view to see height ( 3 )'"
+          @click="toggleTilt"
+        >
+          <Box class="h-4 w-4" aria-hidden="true" />
+        </button>
+      </div>
+      <ZoomControl />
     </div>
   </footer>
 </template>
+
+<style scoped>
+.icon-btn:disabled {
+  @apply cursor-not-allowed opacity-40;
+}
+</style>

@@ -29,9 +29,9 @@ function leave() {
 </script>
 
 <template>
-  <div class="panel flex h-10 items-center gap-0.5 px-1" role="group" aria-label="Zoom">
-    <button type="button" class="icon-btn" aria-label="Zoom out" title="Zoom out ( - )" :disabled="cameraHeightM >= maxHeightM * 0.99" @click="zoomBy(2)">
-      <Minus class="h-4 w-4" aria-hidden="true" />
+  <div class="panel flex w-11 flex-col items-center gap-0.5 p-1" role="group" aria-label="Zoom">
+    <button type="button" class="icon-btn" aria-label="Zoom in" title="Zoom in ( + )" :disabled="cameraHeightM <= MIN_HEIGHT_M * 1.01" @click="zoomBy(0.5)">
+      <Plus class="h-4 w-4" aria-hidden="true" />
     </button>
     <input
       v-model="text"
@@ -41,15 +41,15 @@ function leave() {
       aria-label="Zoom level, 1 to 20, or a height such as 500 km"
       title="Type a zoom level from 1 to 20, or a height such as 500 km"
       :aria-invalid="rejected"
-      class="h-8 w-14 select-text rounded-md bg-transparent text-center font-mono text-sm text-paper hover:bg-raised focus:bg-raised aria-[invalid=true]:text-hostile"
+      class="h-7 w-9 select-text rounded-md bg-transparent text-center font-mono text-xs text-paper hover:bg-raised focus:w-20 focus:bg-raised aria-[invalid=true]:text-hostile"
       @focus="(typing = true), ($event.target as HTMLInputElement).select()"
       @input="rejected = false"
       @blur="leave"
       @keydown.enter="apply"
       @keydown.esc.stop="($event.target as HTMLInputElement).blur()"
     />
-    <button type="button" class="icon-btn" aria-label="Zoom in" title="Zoom in ( + )" :disabled="cameraHeightM <= MIN_HEIGHT_M * 1.01" @click="zoomBy(0.5)">
-      <Plus class="h-4 w-4" aria-hidden="true" />
+    <button type="button" class="icon-btn" aria-label="Zoom out" title="Zoom out ( - )" :disabled="cameraHeightM >= maxHeightM * 0.99" @click="zoomBy(2)">
+      <Minus class="h-4 w-4" aria-hidden="true" />
     </button>
   </div>
 </template>

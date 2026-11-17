@@ -99,8 +99,6 @@ function onFocusOut(e: FocusEvent) {
       </p>
     </div>
 
-    <!-- OpenStreetMap asks for this credit wherever its map is shown. -->
-    <p v-else-if="baseMap === 'streets'" class="panel px-2 py-1 text-[11px] text-dim">© OpenStreetMap contributors</p>
   </div>
 </template>
 

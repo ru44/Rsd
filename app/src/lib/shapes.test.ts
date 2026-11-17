@@ -10,6 +10,7 @@ import {
   formatBearing,
   measure,
   measurements,
+  volumeStats,
   pathLengthM,
   rectRing,
   rectSize,
@@ -125,5 +126,16 @@ describe("measurements", () => {
     expect(bearingDeg([0, 0], [-1, 0])).toBeCloseTo(270);
     expect(formatBearing(45.4)).toBe("045°");
     expect(formatBearing(359.7)).toBe("000°");
+  });
+});
+
+describe("volume", () => {
+  it("multiplies the ground covered by the height", () => {
+    const rows = volumeStats("circle", circleRing(JEDDAH, 1000), 100, 600);
+    expect(rows).toEqual([["Bottom to top", "100 to 600 m"], ["Volume", "1.571 km³"]]);
+  });
+  it("is nothing for a flat shape", () => {
+    expect(volumeStats("rect", rectRing([0, 0], [1, 1]), 0, 0)).toEqual([]);
+    expect(volumeStats("rect", rectRing([0, 0], [1, 1]), 500, 200)).toEqual([]);
   });
 });

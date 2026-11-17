@@ -34,8 +34,17 @@ export interface Area {
   color?: string | null;
   /** What it was drawn as. Missing on areas saved by older versions. */
   shape?: ShapeKind | null;
+  /** A volume: metres above sea level of its bottom and its top. */
+  floor_m?: number | null;
+  ceiling_m?: number | null;
   geojson: ShapeGeo;
 }
+/** The bottom and top of a shape that has height, or null for a flat one. */
+export function volumeOf(a: { floor_m?: number | null; ceiling_m?: number | null }) {
+  const [floor, top] = [a.floor_m ?? 0, a.ceiling_m ?? 0];
+  return top > floor ? { floor, top } : null;
+}
+type Heights = { floor_m?: number; ceiling_m?: number };
 interface Unsaved {
   entityId: string;
   shape: ShapeKind;
@@ -43,6 +52,8 @@ interface Unsaved {
   /** Set for shapes read from a file; drawn shapes are named when saved. */
   name?: string;
   color?: string;
+  floor_m?: number;
+  ceiling_m?: number;
 }
 /** A shape to add without drawing it, as when reading a file. */
 export interface NewShape {
@@ -50,6 +61,8 @@ export interface NewShape {
   pts: Pt[];
   name?: string;
   color?: string;
+  floor_m?: number;
+  ceiling_m?: number;
 }
 
 const API = `${API_URL}/api/areas`;
@@ -114,7 +127,7 @@ const outline = (kind: ShapeKind, pts: Pt[]) => (isPath(kind) || pts.length < 3 
 // A rectangle's sides follow the grid lines instead of the shortest path.
 const arcOf = (kind: ShapeKind) => (kind === "rect" ? Cesium.ArcType.RHUMB : Cesium.ArcType.GEODESIC);
 
-function drawShape(id: string, kind: ShapeKind, geo: ShapeGeo, color = DEFAULT_COLOR, name = "") {
+function drawShape(id: string, kind: ShapeKind, geo: ShapeGeo, color = DEFAULT_COLOR, name = "", vol: { floor: number; top: number } | null = null) {
   const entities = layer()?.entities;
   if (!entities) return;
   entities.removeById(id);
@@ -145,6 +158,8 @@ function drawShape(id: string, kind: ShapeKind, geo: ShapeGeo, color = DEFAULT_C
             hierarchy: new Cesium.PolygonHierarchy(toCartesian(pts)),
             material: css.withAlpha(0.35),
             arcType: arcOf(kind),
+            // A volume stands up from its bottom height to its top height.
+            ...(vol && { height: vol.floor, extrudedHeight: vol.top, outline: true, outlineColor: css }),
           },
     polyline: {
       positions: toCartesian(outline(kind, pts)),
@@ -156,7 +171,7 @@ function drawShape(id: string, kind: ShapeKind, geo: ShapeGeo, color = DEFAULT_C
   });
 }
 
-const redraw = (a: Area) => drawShape(`area-${a.id}`, kindOf(a), a.geojson, a.color ?? undefined, a.name);
+const redraw = (a: Area) => drawShape(`area-${a.id}`, kindOf(a), a.geojson, a.color ?? undefined, a.name, volumeOf(a));
 
 // ---- drawing a new shape ------------------------------------------------
 
@@ -242,6 +257,8 @@ async function flush() {
         geojson: item.geojson,
         color: item.color ?? DEFAULT_COLOR,
         shape: item.shape,
+        floor_m: item.floor_m,
+        ceiling_m: item.ceiling_m,
       });
       layer()?.entities.removeById(item.entityId);
       areas.value.push(saved);
@@ -271,6 +288,8 @@ async function recreate(snap: Area) {
     geojson: snap.geojson,
     color: snap.color ?? DEFAULT_COLOR,
     shape: snap.shape ?? kindOf(snap),
+    floor_m: snap.floor_m,
+    ceiling_m: snap.ceiling_m,
   });
   areas.value.push(saved);
   redraw(saved);
@@ -311,11 +330,11 @@ function lifeOf(shape: Area) {
 }
 
 /** Changes a shape's name or colour, on screen and in the backend. */
-function applyUpdate(id: number, patch: { name?: string; color?: string }) {
+function applyUpdate(id: number, patch: { name?: string; color?: string } & Heights) {
   const area = find(id);
   if (!area) return;
   Object.assign(area, patch);
-  if (patch.color || kindOf(area) === "text") {
+  if (patch.color || patch.ceiling_m !== undefined || patch.floor_m !== undefined || kindOf(area) === "text") {
     redraw(area);
     if (editing?.id === id) beginEdit(id); // re-attach the live shape and handles
   }
@@ -377,7 +396,7 @@ function addPoint(pos: LonLat, entityId: string | null) {
 // ---- reshaping a saved shape --------------------------------------------
 
 /** Sends a change to the backend. The screen already shows it. */
-async function push(id: number, patch: Partial<Pick<Area, "name" | "color" | "geojson">>) {
+async function push(id: number, patch: Partial<Pick<Area, "name" | "color" | "geojson">> & Heights) {
   try {
     await axios.put(`${API}/${id}`, patch);
     offline.value = false;
@@ -607,10 +626,15 @@ export function useAreas() {
   }
 
   /** Change a shape's name or colour. */
-  function update(id: number, patch: { name?: string; color?: string }) {
+  function update(id: number, patch: { name?: string; color?: string } & Heights) {
     const area = find(id);
     if (!area) return;
-    const before = { ...(patch.name !== undefined && { name: area.name }), ...(patch.color && { color: area.color ?? DEFAULT_COLOR }) };
+    const before = {
+      ...(patch.name !== undefined && { name: area.name }),
+      ...(patch.color && { color: area.color ?? DEFAULT_COLOR }),
+      ...(patch.floor_m !== undefined && { floor_m: area.floor_m ?? 0 }),
+      ...(patch.ceiling_m !== undefined && { ceiling_m: area.ceiling_m ?? 0 }),
+    };
     applyUpdate(id, patch);
     record({ undo: () => applyUpdate(ids.current(id), before), redo: () => applyUpdate(ids.current(id), patch) });
   }
@@ -627,8 +651,8 @@ export function useAreas() {
     for (const s of shapes) {
       const geojson = toGeo(s.kind, s.pts);
       const entityId = `area-new-${++seq}`;
-      drawShape(entityId, s.kind, geojson, s.color, s.name);
-      unsaved.value.push({ entityId, shape: s.kind, geojson, name: s.name, color: s.color });
+      drawShape(entityId, s.kind, geojson, s.color, s.name, volumeOf(s));
+      unsaved.value.push({ entityId, shape: s.kind, geojson, name: s.name, color: s.color, floor_m: s.floor_m, ceiling_m: s.ceiling_m });
     }
     return flush();
   }

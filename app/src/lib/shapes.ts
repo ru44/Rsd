@@ -117,6 +117,34 @@ export function formatBearing(d: number): string {
   return `${String(Math.round(d) % 360).padStart(3, "0")}°`;
 }
 
+/** Ground covered by a closed shape, in square metres. */
+export function surfaceM2(kind: ShapeKind, pts: Pt[]): number {
+  if (isPath(kind) || kind === "text" || pts.length < 3) return 0;
+  if (kind === "circle") return 2 * Math.PI * R * R * (1 - Math.cos(circleOf(pts).radiusM / R));
+  if (kind === "rect") {
+    const lons = pts.map((p) => p[0]);
+    const lats = pts.map((p) => p[1]);
+    return rad(Math.max(...lons) - Math.min(...lons)) * R * R * (Math.sin(rad(Math.max(...lats))) - Math.sin(rad(Math.min(...lats))));
+  }
+  return ringAreaM2(pts);
+}
+
+export function formatVolume(m3: number): string {
+  if (m3 < 1e6) return `${round(m3, 0)} m³`;
+  const km3 = m3 / 1e9;
+  return `${round(km3, km3 < 100 ? 3 : 0)} km³`;
+}
+
+/** A volume's own rows: how tall it is and how much space it holds. */
+export function volumeStats(kind: ShapeKind, pts: Pt[], floorM: number, topM: number): Stat[] {
+  const tall = topM - floorM;
+  if (!(tall > 0)) return [];
+  return [
+    ["Bottom to top", `${round(floorM, 0)} to ${round(topM, 0)} m`],
+    ["Volume", formatVolume(surfaceM2(kind, pts) * tall)],
+  ];
+}
+
 /** A named measurement: ["Radius", "3.2 km"]. */
 export type Stat = [label: string, value: string];
 
@@ -139,7 +167,7 @@ export function measurements(kind: ShapeKind, pts: Pt[]): Stat[] {
       ["Diameter", formatDistance(2 * r)],
       // On a sphere, not a flat sheet: it matters for circles hundreds of km wide.
       ["Circumference", formatDistance(2 * Math.PI * R * Math.sin(r / R))],
-      ["Area", formatArea(2 * Math.PI * R * R * (1 - Math.cos(r / R)))],
+      ["Area", formatArea(surfaceM2(kind, pts))],
     ];
   }
   if (kind === "rect") {
@@ -153,7 +181,7 @@ export function measurements(kind: ShapeKind, pts: Pt[]): Stat[] {
       ["Width", formatDistance(widthM)],
       ["Height", formatDistance(heightM)],
       ["Perimeter", formatDistance(along(s) + along(n) + 2 * heightM)],
-      ["Area", formatArea(rad(e - w) * R * R * (Math.sin(rad(n)) - Math.sin(rad(s))))],
+      ["Area", formatArea(surfaceM2(kind, pts))],
     ];
   }
   return [

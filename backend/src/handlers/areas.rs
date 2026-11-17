@@ -11,6 +11,9 @@ pub struct AreaInput {
     color: Option<String>,
     // How it was drawn: "polygon", "rect", "circle" or "line".
     shape: Option<String>,
+    // For a volume: metres above sea level of its bottom and its top.
+    floor_m: Option<f64>,
+    ceiling_m: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -20,6 +23,8 @@ pub struct AreaOutput {
     geojson: serde_json::Value,
     color: Option<String>,
     shape: Option<String>,
+    floor_m: Option<f64>,
+    ceiling_m: Option<f64>,
 }
 
 // This function is now robust and won't crash the server.
@@ -36,7 +41,7 @@ pub async fn get_areas(State(pool): State<Pool>) -> impl IntoResponse {
     };
 
     let stmt = match
-        client.prepare("SELECT id, name, color, shape, ST_AsGeoJSON(geom) as geojson FROM areas ORDER BY id").await
+        client.prepare("SELECT id, name, color, shape, floor_m, ceiling_m, ST_AsGeoJSON(geom) as geojson FROM areas ORDER BY id").await
     {
         Ok(stmt) => stmt,
         Err(err) => {
@@ -67,6 +72,8 @@ pub async fn get_areas(State(pool): State<Pool>) -> impl IntoResponse {
                 name: row.get("name"),
                 color: row.get::<_, Option<String>>("color"),
         shape: row.get::<_, Option<String>>("shape"),
+        floor_m: row.get::<_, Option<f64>>("floor_m"),
+        ceiling_m: row.get::<_, Option<f64>>("ceiling_m"),
                 // The geojson is already a JSON object from the previous step, no need to parse again
                 geojson: serde_json
                     ::from_str(row.get::<_, String>("geojson").as_str())
@@ -99,7 +106,7 @@ pub async fn create_area(
 
     let stmt = match
         client.prepare(
-            "INSERT INTO areas (name, geom, color, shape) VALUES ($1, ST_GeomFromGeoJSON($2), $3, $4) RETURNING id, name, color, shape, ST_AsGeoJSON(geom) as geojson"
+            "INSERT INTO areas (name, geom, color, shape, floor_m, ceiling_m) VALUES ($1, ST_GeomFromGeoJSON($2), $3, $4, $5, $6) RETURNING id, name, color, shape, floor_m, ceiling_m, ST_AsGeoJSON(geom) as geojson"
         ).await
     {
         Ok(stmt) => stmt,
@@ -113,7 +120,7 @@ pub async fn create_area(
         }
     };
 
-    let row = match client.query_one(&stmt, &[&input.name, &geojson_str, &input.color, &input.shape]).await {
+    let row = match client.query_one(&stmt, &[&input.name, &geojson_str, &input.color, &input.shape, &input.floor_m, &input.ceiling_m]).await {
         Ok(row) => row,
         Err(e) => {
             // This now catches the "invalid GeoJSON" error and reports it cleanly
@@ -131,6 +138,8 @@ pub async fn create_area(
         name: row.get("name"),
         color: row.get::<_, Option<String>>("color"),
         shape: row.get::<_, Option<String>>("shape"),
+        floor_m: row.get::<_, Option<f64>>("floor_m"),
+        ceiling_m: row.get::<_, Option<f64>>("ceiling_m"),
         geojson: serde_json::from_str(row.get::<_, String>("geojson").as_str()).unwrap_or_default(),
     };
 
@@ -152,6 +161,8 @@ pub struct AreaPatch {
     name: Option<String>,
     geojson: Option<serde_json::Value>,
     color: Option<String>,
+    floor_m: Option<f64>,
+    ceiling_m: Option<f64>,
 }
 
 fn error(status: StatusCode, message: String) -> axum::response::Response {
@@ -177,9 +188,11 @@ pub async fn update_area(
         client.query_opt(
             "UPDATE areas SET name = COALESCE($2::varchar, name), \
              geom = COALESCE(ST_GeomFromGeoJSON($3::text), geom), \
-             color = COALESCE($4::text, color) \
-             WHERE id = $1 RETURNING id, name, color, shape, ST_AsGeoJSON(geom) as geojson",
-            &[&id, &patch.name, &geojson, &patch.color]
+             color = COALESCE($4::text, color), \
+             floor_m = COALESCE($5::float8, floor_m), \
+             ceiling_m = COALESCE($6::float8, ceiling_m) \
+             WHERE id = $1 RETURNING id, name, color, shape, floor_m, ceiling_m, ST_AsGeoJSON(geom) as geojson",
+            &[&id, &patch.name, &geojson, &patch.color, &patch.floor_m, &patch.ceiling_m]
         ).await
     {
         Ok(Some(row)) => row,
@@ -197,6 +210,8 @@ pub async fn update_area(
         name: row.get("name"),
         color: row.get::<_, Option<String>>("color"),
         shape: row.get::<_, Option<String>>("shape"),
+        floor_m: row.get::<_, Option<f64>>("floor_m"),
+        ceiling_m: row.get::<_, Option<f64>>("ceiling_m"),
         geojson: serde_json::from_str(row.get::<_, String>("geojson").as_str()).unwrap_or_default(),
     };
     (StatusCode::OK, Json(area)).into_response()

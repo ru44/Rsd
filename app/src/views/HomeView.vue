@@ -21,7 +21,7 @@ import { useRuler } from "@/composables/useRuler";
 import { redo, undo } from "@/composables/history";
 import { pickerOpen, tool, type Tool } from "@/composables/tool";
 
-const { toggleMode, zoomBy, resetNorth } = useMap();
+const { toggleMode, zoomBy, resetNorth, toggleTilt } = useMap();
 const areas = useAreas();
 const symbols = useSymbols();
 const { attach: attachGrid } = useMgrsGrid();
@@ -71,6 +71,8 @@ function onKey(e: KeyboardEvent) {
     tool.value = "select";
     pickerOpen.value = true;
     e.preventDefault(); // keep the letter out of the picker's search box
+  } else if (key === "3") {
+    toggleTilt();
   } else if (key === "n") {
     resetNorth();
   } else if (key === "g") {
@@ -122,7 +124,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
         </div>
       </div>
 
-      <div class="absolute right-3 top-3 z-20 flex max-h-[calc(100%-5rem)] flex-col items-end gap-2 overflow-y-auto">
+      <div class="absolute right-3 top-3 z-20 flex max-h-[calc(100%-16rem)] flex-col items-end gap-2 overflow-y-auto">
         <LayersPanel />
         <SelectionPanel />
       </div>

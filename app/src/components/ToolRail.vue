@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Component } from "vue";
+import { computed, ref, type Component } from "vue";
 import { Circle, Flag, Globe, Hand, Map, Maximize, MousePointer2, MoveUpRight, Pentagon, Redo2, Route, Ruler, Square, Type, Undo2, Waypoints } from "lucide-vue-next";
 import { useMap } from "@/composables/useMap";
 import { useClearView } from "@/composables/useClearView";
@@ -28,6 +28,24 @@ const DRAW: Item[] = [
   { id: "text", label: "Text label", key: "T", icon: Type },
 ];
 
+// The rail is a single button showing the tool in hand until the pointer or
+// the keyboard reaches it; then it opens to show every tool.
+const open = ref(false);
+let closing: ReturnType<typeof setTimeout> | undefined;
+function show() {
+  clearTimeout(closing);
+  open.value = true;
+}
+// A short wait, so brushing past the edge does not snap it shut.
+const hide = () => (closing = setTimeout(() => (open.value = false), 350));
+const inHand = computed(() => {
+  const t = tool.value;
+  if (t === "symbol" || pickerOpen.value) return { label: "Military symbol", icon: Flag };
+  if (t === "ruler") return { label: "Measure distance", icon: Ruler };
+  if (t === "route") return { label: "Route from A to B", icon: Route };
+  return [...MOVE, ...DRAW].find((i) => i.id === t) ?? MOVE[1];
+});
+
 // Only one tool is active at a time. Pressing a drawing tool again puts it down.
 function choose(id: Tool) {
   pickerOpen.value = false;
@@ -44,7 +62,19 @@ function toggleSymbols() {
 </script>
 
 <template>
-  <nav class="panel flex flex-col gap-0.5 p-1" aria-label="Map tools">
+  <nav class="panel flex flex-col gap-0.5 p-1" aria-label="Map tools" @mouseenter="show" @mouseleave="hide" @focusin="show" @focusout="hide">
+    <button
+      v-if="!open"
+      type="button"
+      class="icon-btn tool"
+      aria-pressed="true"
+      aria-expanded="false"
+      :aria-label="`${inHand.label}. Show all tools`"
+      @click="show"
+    >
+      <component :is="inHand.icon" class="h-4 w-4" aria-hidden="true" />
+    </button>
+    <template v-else>
     <template v-for="(group, g) in [MOVE, DRAW]" :key="g">
       <hr v-if="g > 0" class="rule" />
       <button
@@ -121,6 +151,7 @@ function toggleSymbols() {
       <Maximize class="h-4 w-4" aria-hidden="true" />
       <span class="tip" aria-hidden="true">Full screen, no controls <kbd class="kbd">F</kbd></span>
     </button>
+    </template>
   </nav>
 </template>
 

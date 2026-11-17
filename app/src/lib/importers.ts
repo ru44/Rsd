@@ -8,6 +8,8 @@ export interface ImportedShape {
   pts: Pt[];
   name?: string;
   color?: string;
+  floor_m?: number;
+  ceiling_m?: number;
 }
 export interface ImportedSymbol {
   sidc: string;
@@ -37,6 +39,8 @@ interface Props {
   color?: string;
   kind?: string;
   sidc?: string;
+  floor_m?: number;
+  ceiling_m?: number;
 }
 
 /** Sorts one geometry into the result. `type` and `coordinates` are as in GeoJSON. */
@@ -58,7 +62,8 @@ function take(out: Imported, type: string, coordinates: unknown, props: Props) {
     const pts = openRing(toPts(list[0]));
     if (pts.length < 3) return void out.skipped++;
     const drawnAs = props.kind === "rect" && pts.length === 4 ? "rect" : props.kind === "circle" && pts.length >= 8 ? "circle" : "polygon";
-    out.shapes.push({ kind: drawnAs, pts, name, color });
+    const tall = (props.ceiling_m ?? 0) > (props.floor_m ?? 0) ? { floor_m: props.floor_m ?? 0, ceiling_m: props.ceiling_m } : {};
+    out.shapes.push({ kind: drawnAs, pts, name, color, ...tall });
   } else if (type === "MultiPoint" || type === "MultiLineString" || type === "MultiPolygon") {
     for (const part of list) take(out, type.slice(5), part, props);
   } else if (type === "GeometryCollection") {
@@ -81,6 +86,8 @@ export function fromGeoJson(text: string): Imported {
       color: str(p.color) ?? str(p.stroke),
       kind: str(p.kind),
       sidc: str(p.sidc),
+      floor_m: typeof p.floor_m === "number" ? p.floor_m : undefined,
+      ceiling_m: typeof p.ceiling_m === "number" ? p.ceiling_m : undefined,
     };
     const g = f?.geometry;
     if (!g?.type) out.skipped++;

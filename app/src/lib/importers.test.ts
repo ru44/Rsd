@@ -8,7 +8,7 @@ const tri: Pt[] = [[39, 21], [40, 21], [40, 22]];
 const shapes = [
   { id: 1, name: "Box", color: "#FF8080", shape: "rect", geojson: toGeo("rect", rectRing([39, 21], [40, 22])) },
   { id: 2, name: "Ring", color: "#AAFFAA", shape: "circle", geojson: toGeo("circle", circleRing([39, 21], 5000)) },
-  { id: 3, name: "Zone", color: "#7FD4F5", shape: "polygon", geojson: toGeo("polygon", tri) },
+  { id: 3, name: "Zone", color: "#7FD4F5", shape: "polygon", floor_m: 500, ceiling_m: 3000, geojson: toGeo("polygon", tri) },
   { id: 4, name: "Route", color: "#FFFF80", shape: "line", geojson: toGeo("line", tri) },
   { id: 5, name: "Push", color: "#F2B441", shape: "arrow", geojson: toGeo("arrow", tri.slice(0, 2)) },
   { id: 6, name: "HQ here", color: "#FAFAFA", shape: "text", geojson: toGeo("text", [[39.5, 21.5]]) },
@@ -28,6 +28,8 @@ describe("GeoJSON", () => {
     ]);
     expect(got.symbols).toEqual([{ sidc: "SFGPUCA----", name: "Tank", coords: [39.2, 21.6] }]);
     expect(got.skipped).toBe(0);
+    expect(got.shapes[2]).toMatchObject({ floor_m: 500, ceiling_m: 3000 });
+    expect(got.shapes[0].ceiling_m).toBeUndefined();
   });
   it("reads files from other tools", () => {
     const got = fromGeoJson(
