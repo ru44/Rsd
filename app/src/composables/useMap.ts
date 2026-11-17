@@ -175,6 +175,9 @@ export function useMap() {
       selectionIndicator: false,
     });
 
+    // Open the app with ?fps in the address to see how fast the map is drawing.
+    if (new URLSearchParams(location.search).has("fps")) v.scene.debugShowFramesPerSecond = true;
+
     // Default double-click zooms onto an entity and locks the camera to it.
     v.cesiumWidget.screenSpaceEventHandler.removeInputAction(
       Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK
