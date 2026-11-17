@@ -1,3 +1,4 @@
+import { SPRITE_SCALE, spriteId, textSprite } from "@/lib/textSprite";
 import { ref, watch } from "vue";
 import * as Cesium from "cesium";
 import { useMap } from "./useMap";
@@ -20,7 +21,9 @@ const ZONE_NAMES_BELOW_M = 13_000_000;
 
 const visible = ref(true);
 let lines: Cesium.PolylineCollection | null = null;
-let labels: Cesium.LabelCollection | null = null;
+let labels: Cesium.BillboardCollection | null = null;
+/** Names of the pictures the label layer has uploaded so far. */
+const seen = new Set<string>();
 let fontsReady = false;
 let lastDraw = 0;
 let pending: ReturnType<typeof setTimeout> | null = null;
@@ -74,7 +77,15 @@ function draw() {
   if (!v || !lines || !labels || !fontsReady) return;
   lastDraw = Date.now();
   lines.removeAll();
-  labels.removeAll();
+  // Names already uploaded stay on the graphics card. After a lot of roaming,
+  // start again with an empty set so that store cannot grow without limit.
+  if (seen.size > 1500) {
+    v.scene.primitives.remove(labels); // also frees what it had uploaded
+    labels = v.scene.primitives.add(new Cesium.BillboardCollection());
+    seen.clear();
+  }
+  labels!.removeAll();
+  v.scene.requestRender(); // the old grid has just been taken away
   if (!visible.value || v.scene.mode === Cesium.SceneMode.MORPHING) return;
 
   const rects = viewRects(v);
@@ -105,20 +116,21 @@ function draw() {
     }
     for (const label of grid.labels) {
       const style = STYLE[label.level];
+      const sprite = textSprite(label.text, { font: style.font, color: style.text.toCssColorString(), halo: "rgba(9, 9, 11, 0.85)" });
+      seen.add(spriteId(sprite));
       labels.add({
         position: Cesium.Cartesian3.fromDegrees(label.lon, label.lat),
-        text: label.text,
-        font: style.font,
-        fillColor: style.text,
-        outlineColor: Cesium.Color.BLACK,
-        outlineWidth: 2,
-        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-        verticalOrigin: Cesium.VerticalOrigin.CENTER,
+        image: sprite,
+        imageId: spriteId(sprite), // the same name every time, so it is uploaded once
+        scale: 1 / SPRITE_SCALE,
         distanceDisplayCondition: label.level === 0 ? nearOnly : undefined,
       });
     }
   }
+  // The grid is drawn outside the map engine's own bookkeeping, so say so;
+  // and again shortly after, once the names' pictures have been uploaded.
+  v.scene.requestRender();
+  setTimeout(() => !v.isDestroyed() && v.scene.requestRender(), 120);
 }
 
 /** Redraw soon, but not more often than REDRAW_EVERY_MS while the map moves. */
@@ -137,7 +149,7 @@ export function useMgrsGrid() {
     const v = useMap().viewer.value;
     if (!v || lines) return;
     lines = v.scene.primitives.add(new Cesium.PolylineCollection());
-    labels = v.scene.primitives.add(new Cesium.LabelCollection());
+    labels = v.scene.primitives.add(new Cesium.BillboardCollection());
 
     v.camera.changed.addEventListener(schedule);
     v.camera.moveEnd.addEventListener(schedule);

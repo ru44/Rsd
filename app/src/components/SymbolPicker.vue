@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MenuSelect from "./MenuSelect.vue";
 import { computed, onMounted, ref } from "vue";
 import { Search } from "lucide-vue-next";
 import { symbolImage } from "@/composables/useSymbols";
@@ -68,14 +69,14 @@ const rows = computed(() =>
         </button>
       </div>
 
-      <select
+      <MenuSelect
         v-if="!query.trim()"
         v-model="category"
-        aria-label="Category"
-        class="w-full rounded-md border border-edge bg-raised px-2 py-1.5 text-paper"
-      >
-        <option v-for="c in CATEGORIES" :key="c.key" :value="c.key">{{ c.label }}</option>
-      </select>
+        :options="CATEGORIES.map((c) => ({ value: c.key, label: c.label }))"
+        label="Category"
+        block
+        class="rounded-md border border-edge"
+      />
     </div>
 
     <!-- A pasted code: show what it is and offer to place it as written. -->

@@ -1,6 +1,7 @@
 import { computed, ref, shallowRef } from "vue";
 import * as Cesium from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
+import { tool } from "./tool";
 
 export const API_URL: string =
   import.meta.env.VITE_API_URL ?? "http://localhost:7000";
@@ -70,7 +71,7 @@ const dragHandlers: DragHandler[] = [];
 let activeDrag: DragHandler | null = null;
 let downAt: Cesium.Cartesian2 | null = null;
 let dragMoved = false;
-let lastHoverPick = 0;
+let hoverTimer: ReturnType<typeof setTimeout> | undefined;
 let shift = false;
 
 let worldLayer: Cesium.ImageryLayer | null = null;
@@ -94,6 +95,13 @@ function pick(v: Cesium.Viewer, screen: Cesium.Cartesian2): LonLat | null {
 function pickEntityId(v: Cesium.Viewer, screen: Cesium.Cartesian2): string | null {
   const picked = v.scene.pick(screen, 7, 7);
   return picked?.id instanceof Cesium.Entity ? picked.id.id : null;
+}
+
+/** Whether anything that can be pointed at is on the map. */
+function hasThings(v: Cesium.Viewer) {
+  if (v.entities.values.length) return true;
+  for (let i = 0; i < v.dataSources.length; i++) if (v.dataSources.get(i).entities.values.length) return true;
+  return false;
 }
 
 function savedBaseMap(): BaseMapId | null {
@@ -121,6 +129,7 @@ function applyBaseMap() {
     );
   }
   if (streetsLayer) streetsLayer.show = id === "streets";
+  v.scene.requestRender();
 }
 
 /** Looks for the backend's satellite tiles and offers them if they are there. */
@@ -158,6 +167,15 @@ export function useMap() {
 
     const v = new Cesium.Viewer(containerId, {
       baseLayer: worldLayer,
+      // Draw a frame only when something has changed, instead of 60 times a
+      // second for ever. This is what keeps the app light when the map is still.
+      requestRenderMode: true,
+      maximumRenderTimeChange: Infinity,
+      // Never faster than 60 frames a second. On a fast monitor the map
+      // would otherwise draw 150 to 240 times a second for no visible gain.
+      targetFrameRate: 60,
+      // Half the usual edge smoothing: far cheaper on large screens, still clean lines.
+      msaaSamples: 2,
       // Cesium's logo strip is parked off-screen; the margin bar credits the
       // map engine and the base map in text instead.
       creditContainer: document.createElement("div"),
@@ -233,20 +251,37 @@ export function useMap() {
       input.setInputAction(fn as never, type, Cesium.KeyboardEventModifier.SHIFT);
     };
 
+    // Things the map engine cannot see changing for itself: a shape that
+    // follows the pointer, a picture that has just finished loading. A frame
+    // is asked for on every press, key and scroll, and twice a second regardless.
+    const wake = () => v.scene.requestRender();
+    for (const type of ["pointerdown", "pointerup", "keydown", "keyup", "wheel"]) window.addEventListener(type, wake, { passive: true });
+    setInterval(wake, 500);
+
     on<Cesium.ScreenSpaceEventHandler.MotionEvent>(Type.MOUSE_MOVE, (e) => {
       const pos = pick(v, e.endPosition);
       cursor.value = pos;
+      // A drawing or a dragged shape follows the pointer, so it needs a new frame.
+      if (activeDrag || (tool.value !== "select" && tool.value !== "hand")) wake();
       if (activeDrag) {
         if (downAt && Cesium.Cartesian2.distance(downAt, e.endPosition) > 4) dragMoved = true;
         if (pos) activeDrag.move(pos);
         return;
       }
-      // Looking up what is under the pointer costs a little, so do it at
-      // most 20 times a second, and not while the map is being moved.
-      const now = performance.now();
-      if (pressed.value || now - lastHoverPick < 50) return;
-      lastHoverPick = now;
-      hover.value = pickEntityId(v, e.endPosition);
+      // Looking up what is under the pointer is the most expensive thing the
+      // app does: the graphics card has to stop and answer. So it is done only
+      // once the pointer has come to rest, only with the select tool (the one
+      // whose cursor depends on it), and only if there is anything to find.
+      clearTimeout(hoverTimer);
+      if (pressed.value || tool.value !== "select") {
+        hover.value = null;
+        return;
+      }
+      const at = Cesium.Cartesian2.clone(e.endPosition);
+      hoverTimer = setTimeout(() => {
+        if (pressed.value || v.isDestroyed()) return;
+        hover.value = hasThings(v) ? pickEntityId(v, at) : null;
+      }, 90);
     });
 
     on<Cesium.ScreenSpaceEventHandler.PositionedEvent>(Type.LEFT_CLICK, (e) => {
@@ -269,7 +304,8 @@ export function useMap() {
       pressed.value = true;
       const pos = pick(v, e.position);
       if (!pos || dragHandlers.length === 0) return;
-      const id = pickEntityId(v, e.position);
+      // Only the select tool drags things; the other tools do not need to know what was pressed.
+      const id = tool.value === "select" && hasThings(v) ? pickEntityId(v, e.position) : null;
       activeDrag = dragHandlers.find((h) => h.start(pos, id)) ?? null;
       if (!activeDrag) return;
       downAt = Cesium.Cartesian2.clone(e.position);
@@ -380,6 +416,9 @@ export function useMap() {
   const zoomBy = (factor: number) => zoomTo((zoomTarget ?? cameraHeightM.value) * factor);
 
   /** Moves the view to look straight down at a place from `heightM` up. */
+  /** Asks for one new frame. Call after changing something the map engine does not watch. */
+  const redraw = () => viewer.value?.scene.requestRender();
+
   function flyTo(lon: number, lat: number, heightM: number) {
     viewer.value?.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(lon, lat, heightM),
@@ -410,6 +449,7 @@ export function useMap() {
     init,
     toggleMode,
     setBaseMap,
+    redraw,
     flyTo,
     onLeftClick: (fn: MapClick) => void leftClickListeners.push(fn),
     onRightClick: (fn: MapClick) => void rightClickListeners.push(fn),
