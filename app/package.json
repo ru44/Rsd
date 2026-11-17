@@ -13,26 +13,25 @@
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
-    "@turf/turf": "^7.2.0",
-    "axios": "^1.11.0",
+    "axios": "^1.21.1",
     "cesium": "^1.147.0",
     "lucide-vue-next": "0.525.0",
     "mgrs": "^2.2.0",
     "mil-std-2525": "^0.2.8",
-    "milsymbol": "^3.0.2",
-    "pinia": "^3.0.3",
+    "milsymbol": "^3.0.5",
+    "pinia": "^3.0.4",
     "proj4": "^2.23.0",
-    "vue": "^3.5.18",
-    "vue-router": "^4.5.1"
+    "vue": "^3.5.45",
+    "vue-router": "^4.6.5"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "6.0.0",
-    "autoprefixer": "^10.4.21",
+    "@vitejs/plugin-vue": "^6.0.11",
+    "autoprefixer": "^10.6.2",
     "jsdom": "^31.0.1",
-    "postcss": "^8.5.6",
+    "postcss": "^8.5.33",
     "tailwindcss": "3.3.6",
-    "vite": "7.0.5",
-    "vite-plugin-vue-devtools": "^7.7.7",
+    "vite": "^7.3.8",
+    "vite-plugin-vue-devtools": "^8.2.1",
     "vitest": "^5.1.0"
   }
 }
