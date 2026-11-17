@@ -56,6 +56,45 @@ function label(id: string, position: Cesium.Cartesian3 | Cesium.CallbackProperty
   });
 }
 
+const SAMPLES = 48;
+/**
+ * Where to put a leg's length: the middle of the part of the leg that is on
+ * screen. Zoomed in on a long leg, its true middle is usually out of view,
+ * and the number would be lost.
+ */
+function visibleMiddle(a: Pt, b: Pt): Cesium.Cartesian3 | undefined {
+  const v = useMap().viewer.value;
+  if (!v) return undefined;
+  const ellipsoid = v.scene.globe.ellipsoid;
+  const along = new Cesium.EllipsoidGeodesic(Cesium.Cartographic.fromDegrees(a[0], a[1]), Cesium.Cartographic.fromDegrees(b[0], b[1]), ellipsoid);
+  const facing = v.scene.mode === Cesium.SceneMode.SCENE3D ? new Cesium.EllipsoidalOccluder(ellipsoid, v.camera.positionWC) : null;
+  const { clientWidth: w, clientHeight: h } = v.scene.canvas;
+  const seen: Cesium.Cartesian3[] = [];
+  for (let i = 0; i <= SAMPLES; i++) {
+    const at = Cesium.Cartographic.toCartesian(along.interpolateUsingFraction(i / SAMPLES), ellipsoid);
+    if (facing && !facing.isPointVisible(at)) continue; // round the back of the globe
+    const px = Cesium.SceneTransforms.worldToWindowCoordinates(v.scene, at);
+    // Kept clear of the edges, where the panels are.
+    if (px && px.x > 60 && px.x < w - 60 && px.y > 60 && px.y < h - 60) seen.push(at);
+  }
+  return seen.length ? seen[Math.floor(seen.length / 2)] : undefined;
+}
+
+/** The length of leg `k` (from point k-1 to point k), shown part-way along it. */
+function legLabel(k: number) {
+  label(
+    `${ID}-leg-${k}`,
+    new Cesium.CallbackProperty(() => {
+      const p = path();
+      return k < p.length ? visibleMiddle(p[k - 1], p[k]) : undefined;
+    }, false),
+    new Cesium.CallbackProperty(() => {
+      const p = path();
+      return k < p.length ? formatDistance(distanceM(p[k - 1], p[k])) : "";
+    }, false)
+  );
+}
+
 function clear() {
   const all = entities();
   if (all) for (const e of [...all.values]) if (e.id.startsWith(ID)) all.remove(e);
@@ -105,13 +144,9 @@ function add(pos: LonLat) {
     position: cart(here),
     point: { pixelSize: 9, color: SIGNAL, outlineColor: INK, outlineWidth: 2, disableDepthTestDistance: Number.POSITIVE_INFINITY },
   });
-  // Each finished leg carries its own length, once there is more than one.
-  if (i >= 2) {
-    for (let k = i === 2 ? 1 : i; k <= i; k++) {
-      const [a, b] = [pts[k - 1], pts[k]];
-      label(`${ID}-leg-${k}`, cart([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]), formatDistance(distanceM(a, b)));
-    }
-  }
+  // The leg that starts here gets its own length, which follows the pointer
+  // until the next click fixes it.
+  legLabel(i + 1);
 }
 
 function finish() {
