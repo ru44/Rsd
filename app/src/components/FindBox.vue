@@ -216,7 +216,7 @@ defineExpose({ focus });
 </script>
 
 <template>
-  <div class="panel max-w-[calc(100vw-4.5rem)] text-sm" :class="wide ? 'w-80' : ''" role="search" @focusout="onFocusOut">
+  <div class="panel max-w-[calc(100vw-4.5rem)] text-sm transition-[width] duration-200 ease-out" :class="wide ? 'w-80' : 'w-[110px]'" role="search" @focusout="onFocusOut">
     <div class="flex items-center gap-0.5 p-1">
       <!-- Always present: taking the button away mid-click would count as leaving the box and shut it again. -->
       <button type="button" class="icon-btn" :class="{ '!w-7': wide }" :tabindex="wide ? -1 : 0" aria-label="Find a place or coordinates" title="Find a place ( / )" @click="focus">
