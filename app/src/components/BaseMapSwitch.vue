@@ -74,7 +74,8 @@ function onFocusOut(e: FocusEvent) {
       <span class="thumb" :style="current.style" />
     </button>
 
-    <div v-if="open" class="panel p-2 text-xs" role="radiogroup" aria-label="Base map">
+    <Transition name="pop">
+    <div v-if="open" class="panel origin-bottom-left p-2 text-xs" role="radiogroup" aria-label="Base map">
       <div class="flex gap-2">
         <button
           v-for="c in choices"
@@ -98,6 +99,7 @@ function onFocusOut(e: FocusEvent) {
         For satellite pictures, put <code class="font-mono text-paper">satellite.mbtiles</code> in the backend's storage folder.
       </p>
     </div>
+    </Transition>
 
   </div>
 </template>
