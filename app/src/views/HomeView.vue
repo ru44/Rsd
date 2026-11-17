@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 import MapCanvas from "@/components/MapCanvas.vue";
 import ToolRail from "@/components/ToolRail.vue";
 import ToolHint from "@/components/ToolHint.vue";
+import RoutePanel from "@/components/RoutePanel.vue";
 import FindBox from "@/components/FindBox.vue";
 import SymbolPicker from "@/components/SymbolPicker.vue";
 import LayersPanel from "@/components/LayersPanel.vue";
@@ -30,7 +31,7 @@ const { attach: attachViewLink } = useViewLink();
 const ruler = useRuler();
 const find = ref<InstanceType<typeof FindBox> | null>(null);
 
-const TOOL_KEYS: Record<string, Tool> = { h: "hand", v: "select", r: "rect", c: "circle", p: "polygon", l: "line", a: "arrow", t: "text", m: "ruler" };
+const TOOL_KEYS: Record<string, Tool> = { h: "hand", v: "select", r: "rect", c: "circle", p: "polygon", l: "line", a: "arrow", t: "text", m: "ruler", d: "route" };
 
 function pickSymbol(sidc: string, name: string) {
   pickerOpen.value = false;
@@ -116,6 +117,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
         <div class="flex flex-col items-start gap-2">
           <FindBox ref="find" class="pointer-events-auto" />
           <ToolHint class="pointer-events-auto" />
+          <RoutePanel v-if="tool === 'route'" class="pointer-events-auto" />
           <SymbolPicker v-if="pickerOpen" class="pointer-events-auto" @pick="pickSymbol" />
         </div>
       </div>

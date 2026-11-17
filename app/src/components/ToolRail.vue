@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Component } from "vue";
-import { Circle, Flag, Globe, Hand, Map, Maximize, MousePointer2, MoveUpRight, Pentagon, Redo2, Ruler, Square, Type, Undo2, Waypoints } from "lucide-vue-next";
+import { Circle, Flag, Globe, Hand, Map, Maximize, MousePointer2, MoveUpRight, Pentagon, Redo2, Route, Ruler, Square, Type, Undo2, Waypoints } from "lucide-vue-next";
 import { useMap } from "@/composables/useMap";
 import { useClearView } from "@/composables/useClearView";
 import { isDrawTool, pickerOpen, tool, type Tool } from "@/composables/tool";
@@ -31,7 +31,7 @@ const DRAW: Item[] = [
 // Only one tool is active at a time. Pressing a drawing tool again puts it down.
 function choose(id: Tool) {
   pickerOpen.value = false;
-  tool.value = (isDrawTool(id) || id === "ruler" || id === "text") && tool.value === id ? "select" : id;
+  tool.value = (isDrawTool(id) || id === "ruler" || id === "route" || id === "text") && tool.value === id ? "select" : id;
 }
 function toggleSymbols() {
   if (tool.value === "symbol") {
@@ -83,6 +83,17 @@ function toggleSymbols() {
     >
       <Ruler class="h-4 w-4" aria-hidden="true" />
       <span class="tip" aria-hidden="true">Measure distance <kbd class="kbd">M</kbd></span>
+    </button>
+    <button
+      type="button"
+      class="icon-btn tool"
+      aria-label="Route from A to B"
+      aria-keyshortcuts="D"
+      :aria-pressed="tool === 'route'"
+      @click="choose('route')"
+    >
+      <Route class="h-4 w-4" aria-hidden="true" />
+      <span class="tip" aria-hidden="true">Route from A to B <kbd class="kbd">D</kbd></span>
     </button>
 
     <hr class="rule" />
