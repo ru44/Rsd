@@ -1,4 +1,4 @@
-import { SPRITE_SCALE, textSprite } from "@/lib/textSprite";
+import { SPRITE_SCALE, textSpriteUrl } from "@/lib/textSprite";
 import { ref, watch } from "vue";
 import axios from "axios";
 import * as Cesium from "cesium";
@@ -130,7 +130,7 @@ const arcOf = (kind: ShapeKind) => (kind === "rect" ? Cesium.ArcType.RHUMB : Ces
 
 /** The picture of a text label: its words on a dark plate, lighter when selected. */
 const labelImage = (words: string, color: string, selected: boolean) =>
-  textSprite(words || SHAPE_LABEL.text, {
+  textSpriteUrl(words || SHAPE_LABEL.text, {
     font: "600 15px 'Geist Variable', 'Segoe UI', sans-serif",
     color,
     background: selected ? "rgba(63, 63, 70, 0.95)" : "rgba(9, 9, 11, 0.8)",

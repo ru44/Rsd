@@ -1,4 +1,4 @@
-import { SPRITE_SCALE, textSprite } from "@/lib/textSprite";
+import { SPRITE_SCALE, textSpriteUrl } from "@/lib/textSprite";
 import { ref, watch } from "vue";
 import * as Cesium from "cesium";
 import { useMap, type LonLat } from "./useMap";
@@ -9,8 +9,8 @@ import { bearingDeg, distanceM, formatBearing, formatDistance, pathLengthM, type
 // Nothing is saved; the measurement goes when the tool is put down.
 
 const ID = "ruler";
-const EMPTY = document.createElement("canvas");
-EMPTY.width = EMPTY.height = 1;
+/** A clear dot, shown where a reading has nothing to say yet. */
+const EMPTY = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 const SIGNAL = Cesium.Color.fromCssColorString("#F2B441");
 const INK = Cesium.Color.fromCssColorString("#09090B");
 
@@ -45,7 +45,7 @@ function label(id: string, position: Cesium.Cartesian3 | Cesium.CallbackProperty
   // An empty reading (one point so far) shows nothing at all.
   const picture = (words: string) =>
     words
-      ? textSprite(words, {
+      ? textSpriteUrl(words, {
           font: `${strong ? "600 " : ""}12px 'Geist Mono Variable', monospace`,
           color: strong ? "#09090B" : "#F2B441",
           background: strong ? "#F2B441" : "rgba(9, 9, 11, 0.85)",
@@ -57,7 +57,7 @@ function label(id: string, position: Cesium.Cartesian3 | Cesium.CallbackProperty
     id,
     position: position as unknown as Cesium.PositionProperty,
     billboard: {
-      image: (typeof text === "string" ? picture(text) : new Cesium.CallbackProperty(() => picture(text.getValue(Cesium.JulianDate.now())), false)) as unknown as HTMLCanvasElement,
+      image: (typeof text === "string" ? picture(text) : new Cesium.CallbackProperty(() => picture(text.getValue(Cesium.JulianDate.now())), false)) as unknown as string,
       scale: 1 / SPRITE_SCALE,
       // Clear of the point it belongs to, so the point can still be clicked.
       pixelOffset: new Cesium.Cartesian2(0, strong ? -26 : 0),

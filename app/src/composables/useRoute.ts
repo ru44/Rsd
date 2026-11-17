@@ -1,4 +1,4 @@
-import { SPRITE_SCALE, textSprite } from "@/lib/textSprite";
+import { SPRITE_SCALE, textSpriteUrl } from "@/lib/textSprite";
 import { ref, shallowRef, watch } from "vue";
 import * as Cesium from "cesium";
 import { ONLINE_MAPS, useMap } from "./useMap";
@@ -52,7 +52,7 @@ function draw() {
       position: Cesium.Cartesian3.fromDegrees(p[0], p[1]),
       point: { pixelSize: 20, color: LINE, outlineColor: INK, outlineWidth: 2, disableDepthTestDistance: Number.POSITIVE_INFINITY },
       billboard: {
-        image: textSprite(letter(i), { font: "600 12px 'Geist Variable', sans-serif", color: "#09090B" }),
+        image: textSpriteUrl(letter(i), { font: "600 12px 'Geist Variable', sans-serif", color: "#09090B" }),
         scale: 1 / SPRITE_SCALE,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
       },

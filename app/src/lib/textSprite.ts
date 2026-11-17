@@ -17,6 +17,8 @@ export interface TextStyle {
 /** Pictures are drawn at this many times their shown size, to stay sharp. */
 export const SPRITE_SCALE = 2;
 const cache = new Map<string, HTMLCanvasElement>();
+const urls = new Map<string, string>();
+const keys = new WeakMap<HTMLCanvasElement, string>();
 const MAX_CACHED = 600;
 
 export function textSprite(text: string, style: TextStyle): HTMLCanvasElement {
@@ -54,7 +56,28 @@ export function textSprite(text: string, style: TextStyle): HTMLCanvasElement {
   ctx.fillStyle = style.color;
   ctx.fillText(text, width / 2, height / 2 + 0.5);
 
-  if (cache.size >= MAX_CACHED) cache.clear(); // readouts that change every frame would grow it for ever
+  if (cache.size >= MAX_CACHED) {
+    // Readouts that change every frame would grow these for ever.
+    cache.clear();
+    urls.clear();
+  }
   cache.set(key, canvas);
+  keys.set(canvas, key);
   return canvas;
+}
+
+/**
+ * A name for a picture that is the same every time the same words are drawn.
+ * The map engine uploads a picture to the graphics card once per name, so a
+ * steady name is what stops it uploading the same words again and again.
+ */
+export const spriteId = (canvas: HTMLCanvasElement) => keys.get(canvas) ?? "";
+
+/** The same picture as an address, which carries its own steady name. */
+export function textSpriteUrl(text: string, style: TextStyle): string {
+  const canvas = textSprite(text, style);
+  const key = spriteId(canvas);
+  let url = urls.get(key);
+  if (!url) urls.set(key, (url = canvas.toDataURL()));
+  return url;
 }

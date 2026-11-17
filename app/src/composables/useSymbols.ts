@@ -61,6 +61,15 @@ function layer() {
   return source;
 }
 
+// One picture per symbol code, as an address: the map engine then uploads
+// each code to the graphics card once, however many symbols use it.
+const mapImages = new Map<string, string>();
+function mapImage(sidc: string) {
+  let url = mapImages.get(sidc);
+  if (!url) mapImages.set(sidc, (url = new ms.Symbol(sidc, { size: MAP_SYMBOL_SIZE }).asCanvas(2).toDataURL()));
+  return url;
+}
+
 function draw(id: string, sidc: string, [lon, lat]: [number, number]) {
   const entities = layer()?.entities;
   if (!entities) return;
@@ -69,7 +78,7 @@ function draw(id: string, sidc: string, [lon, lat]: [number, number]) {
     id,
     position: Cesium.Cartesian3.fromDegrees(lon, lat),
     billboard: {
-      image: new ms.Symbol(sidc, { size: MAP_SYMBOL_SIZE }).asCanvas(2),
+      image: mapImage(sidc),
       scale: 0.5,
       // Shrink a little when far away so symbols do not swamp a wide view.
       scaleByDistance: new Cesium.NearFarScalar(4e5, 1, 1.5e7, 0.65),

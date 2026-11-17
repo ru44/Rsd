@@ -1,4 +1,4 @@
-import { SPRITE_SCALE, textSprite } from "@/lib/textSprite";
+import { SPRITE_SCALE, spriteId, textSprite } from "@/lib/textSprite";
 import { ref, watch } from "vue";
 import * as Cesium from "cesium";
 import { useMap } from "./useMap";
@@ -22,6 +22,8 @@ const ZONE_NAMES_BELOW_M = 13_000_000;
 const visible = ref(true);
 let lines: Cesium.PolylineCollection | null = null;
 let labels: Cesium.BillboardCollection | null = null;
+/** Names of the pictures the label layer has uploaded so far. */
+const seen = new Set<string>();
 let fontsReady = false;
 let lastDraw = 0;
 let pending: ReturnType<typeof setTimeout> | null = null;
@@ -75,7 +77,14 @@ function draw() {
   if (!v || !lines || !labels || !fontsReady) return;
   lastDraw = Date.now();
   lines.removeAll();
-  labels.removeAll();
+  // Names already uploaded stay on the graphics card. After a lot of roaming,
+  // start again with an empty set so that store cannot grow without limit.
+  if (seen.size > 1500) {
+    v.scene.primitives.remove(labels); // also frees what it had uploaded
+    labels = v.scene.primitives.add(new Cesium.BillboardCollection());
+    seen.clear();
+  }
+  labels!.removeAll();
   if (!visible.value || v.scene.mode === Cesium.SceneMode.MORPHING) return;
 
   const rects = viewRects(v);
@@ -106,9 +115,12 @@ function draw() {
     }
     for (const label of grid.labels) {
       const style = STYLE[label.level];
+      const sprite = textSprite(label.text, { font: style.font, color: style.text.toCssColorString(), halo: "rgba(9, 9, 11, 0.85)" });
+      seen.add(spriteId(sprite));
       labels.add({
         position: Cesium.Cartesian3.fromDegrees(label.lon, label.lat),
-        image: textSprite(label.text, { font: style.font, color: style.text.toCssColorString(), halo: "rgba(9, 9, 11, 0.85)" }),
+        image: sprite,
+        imageId: spriteId(sprite), // the same name every time, so it is uploaded once
         scale: 1 / SPRITE_SCALE,
         distanceDisplayCondition: label.level === 0 ? nearOnly : undefined,
       });
