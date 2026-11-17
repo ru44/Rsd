@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import * as Cesium from "cesium";
-import { Layers, Trash2, Upload, X } from "lucide-vue-next";
+import { Grid3x3, Layers, Trash2, Upload, X } from "lucide-vue-next";
 import { readMapFile } from "@/lib/importers";
 import { toGeoJson, toKml } from "@/lib/exporters";
 import { useMap } from "@/composables/useMap";
@@ -11,7 +11,7 @@ import { useMgrsGrid } from "@/composables/useMgrsGrid";
 import { selection } from "@/composables/selection";
 
 const { viewer, pressed } = useMap();
-const { visible: gridVisible } = useMgrsGrid();
+const { visible: gridVisible, namesVisible: gridNames } = useMgrsGrid();
 const {
   areas,
   unsaved: unsavedAreas,
@@ -121,9 +121,21 @@ async function removeConfirmed() {
 
 <template>
   <section class="panel text-sm" :class="open ? 'w-60 max-w-[calc(100vw-6rem)]' : 'p-1'" aria-label="Layers">
-    <button v-if="!open" type="button" class="icon-btn" aria-label="Layers" title="Layers and export" aria-expanded="false" @click="open = true">
-      <Layers class="h-4 w-4" aria-hidden="true" />
-    </button>
+    <div v-if="!open" class="flex gap-0.5">
+      <button
+        type="button"
+        class="icon-btn"
+        :aria-pressed="gridVisible"
+        :aria-label="gridVisible ? 'Hide the MGRS grid' : 'Show the MGRS grid'"
+        :title="gridVisible ? 'Hide the MGRS grid ( X )' : 'Show the MGRS grid ( X )'"
+        @click="gridVisible = !gridVisible"
+      >
+        <Grid3x3 class="h-4 w-4" aria-hidden="true" />
+      </button>
+      <button type="button" class="icon-btn" aria-label="Layers" title="Layers and export" aria-expanded="false" @click="open = true">
+        <Layers class="h-4 w-4" aria-hidden="true" />
+      </button>
+    </div>
     <header v-else class="flex items-center gap-2 py-1 pl-3 pr-1 font-medium">
       <Layers class="h-4 w-4 text-dim" aria-hidden="true" />
       Layers
@@ -136,6 +148,11 @@ async function removeConfirmed() {
       <label class="row">
         <input v-model="gridVisible" type="checkbox" class="box" />
         MGRS grid
+        <kbd class="kbd ml-auto">X</kbd>
+      </label>
+      <label class="row pl-9" :class="{ 'opacity-50': !gridVisible }">
+        <input v-model="gridNames" type="checkbox" class="box" :disabled="!gridVisible" />
+        Grid names
       </label>
 
       <div class="row">

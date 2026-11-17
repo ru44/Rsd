@@ -19,12 +19,14 @@ import { useSelection } from "@/composables/useSelection";
 import { useViewLink } from "@/composables/useViewLink";
 import { useRuler } from "@/composables/useRuler";
 import { redo, undo } from "@/composables/history";
+import { railShown } from "@/composables/prefs";
+import { ChevronRight } from "lucide-vue-next";
 import { pickerOpen, tool, type Tool } from "@/composables/tool";
 
 const { toggleMode, zoomBy, resetNorth, toggleTilt } = useMap();
 const areas = useAreas();
 const symbols = useSymbols();
-const { attach: attachGrid } = useMgrsGrid();
+const { attach: attachGrid, visible: gridVisible } = useMgrsGrid();
 const { clear, hint, exit: exitClearView, toggle: toggleClearView } = useClearView();
 const { selection, deselect } = useSelection();
 const { attach: attachViewLink } = useViewLink();
@@ -73,6 +75,10 @@ function onKey(e: KeyboardEvent) {
     e.preventDefault(); // keep the letter out of the picker's search box
   } else if (key === "3") {
     toggleTilt();
+  } else if (key === "x") {
+    gridVisible.value = !gridVisible.value;
+  } else if (key === "b") {
+    railShown.value = !railShown.value;
   } else if (key === "n") {
     resetNorth();
   } else if (key === "g") {
@@ -115,7 +121,18 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
       <!-- Tools down the left edge; beside them the search box, then whatever the active tool needs. -->
       <div class="pointer-events-none absolute left-3 top-3 z-20 flex items-start gap-2">
         <!-- Above its neighbours, so the tools' hover labels are not covered. -->
-        <ToolRail class="pointer-events-auto relative z-10" />
+        <ToolRail v-if="railShown" class="pointer-events-auto relative z-10" />
+        <!-- With the tools hidden, a slim tab on the screen edge brings them back. -->
+        <button
+          v-else
+          type="button"
+          class="panel pointer-events-auto -ml-3 flex h-10 w-5 items-center justify-center rounded-l-none border-l-0 text-dim hover:text-paper"
+          aria-label="Show the tools"
+          title="Show the tools ( B )"
+          @click="railShown = true"
+        >
+          <ChevronRight class="h-4 w-4" aria-hidden="true" />
+        </button>
         <div class="flex flex-col items-start gap-2">
           <FindBox ref="find" class="pointer-events-auto" />
           <ToolHint class="pointer-events-auto" />

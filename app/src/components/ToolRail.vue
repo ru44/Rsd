@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, type Component } from "vue";
-import { Circle, Flag, Globe, Hand, Map, Maximize, MousePointer2, MoveUpRight, Pentagon, Redo2, Route, Ruler, Square, Type, Undo2, Waypoints } from "lucide-vue-next";
+import { Circle, Flag, Globe, Hand, Map, Maximize, MousePointer2, PanelLeftClose, MoveUpRight, Pentagon, Redo2, Route, Ruler, Square, Type, Undo2, Waypoints } from "lucide-vue-next";
 import { useMap } from "@/composables/useMap";
 import { useClearView } from "@/composables/useClearView";
 import { isDrawTool, pickerOpen, tool, type Tool } from "@/composables/tool";
 import { canRedo, canUndo, redo, undo } from "@/composables/history";
+import { railShown } from "@/composables/prefs";
 
 const { is3D, toggleMode } = useMap();
 const { enter: enterClearView } = useClearView();
@@ -150,6 +151,10 @@ function toggleSymbols() {
     <button type="button" class="icon-btn tool" aria-label="Full screen with no controls" aria-keyshortcuts="F" @click="enterClearView">
       <Maximize class="h-4 w-4" aria-hidden="true" />
       <span class="tip" aria-hidden="true">Full screen, no controls <kbd class="kbd">F</kbd></span>
+    </button>
+    <button type="button" class="icon-btn tool" aria-label="Hide the tools" aria-keyshortcuts="B" @click="railShown = false">
+      <PanelLeftClose class="h-4 w-4" aria-hidden="true" />
+      <span class="tip" aria-hidden="true">Hide the tools <kbd class="kbd">B</kbd></span>
     </button>
     </template>
   </nav>

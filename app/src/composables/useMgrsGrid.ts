@@ -1,3 +1,4 @@
+import { savedSwitch } from "./prefs";
 import { ref, watch } from "vue";
 import * as Cesium from "cesium";
 import { useMap } from "./useMap";
@@ -18,7 +19,9 @@ const REDRAW_EVERY_MS = 150;
 /** Eye altitude (globe) or view width (flat map) under which zone names fit. */
 const ZONE_NAMES_BELOW_M = 13_000_000;
 
-const visible = ref(true);
+const visible = savedSwitch("rsgis.grid", true);
+/** The zone and square names. The lines can be shown without them. */
+const namesVisible = savedSwitch("rsgis.gridNames", true);
 let lines: Cesium.PolylineCollection | null = null;
 let labels: Cesium.LabelCollection | null = null;
 let fontsReady = false;
@@ -103,7 +106,7 @@ function draw() {
         material: Cesium.Material.fromType("Color", { color: STYLE[line.level].line }),
       });
     }
-    for (const label of grid.labels) {
+    for (const label of namesVisible.value ? grid.labels : []) {
       const style = STYLE[label.level];
       labels.add({
         position: Cesium.Cartesian3.fromDegrees(label.lon, label.lat),
@@ -142,7 +145,7 @@ export function useMgrsGrid() {
     v.camera.changed.addEventListener(schedule);
     v.camera.moveEnd.addEventListener(schedule);
     v.scene.morphComplete.addEventListener(schedule);
-    watch(visible, draw);
+    watch([visible, namesVisible], draw);
     // Cesium caches label glyphs, so wait for the font or the first labels
     // would be stuck in the fallback face.
     Promise.all([document.fonts.load("600 13px 'Geist Variable'"), document.fonts.load("12px 'Geist Variable'")])
@@ -153,5 +156,5 @@ export function useMgrsGrid() {
       });
   }
 
-  return { visible, attach };
+  return { visible, namesVisible, attach };
 }
