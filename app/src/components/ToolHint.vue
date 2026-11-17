@@ -38,6 +38,9 @@ const text = computed(() => {
       return "";
   }
 });
+// Tools that show a number that changes as the pointer moves. Their card keeps
+// one width, so it does not grow and shrink with every digit.
+const live = computed(() => ["ruler", "rect", "circle", "line", "arrow"].includes(tool.value));
 const finishable = computed(
   () => ["polygon", "line", "arrow"].includes(tool.value) || (tool.value === "ruler" && !ruler.done.value)
 );
@@ -48,8 +51,8 @@ const finish = () => (tool.value === "ruler" ? ruler.finish() : finishDraw());
 </script>
 
 <template>
-  <div v-if="text" class="panel flex max-w-md items-center gap-2 py-1 pl-3 pr-1 text-sm" role="status">
-    <span :class="{ 'font-mono': tool === 'ruler' && ruler.info.value }">{{ text }}</span>
+  <div v-if="text" class="panel flex max-w-[calc(100vw-4.5rem)] items-center gap-2 py-1 pl-3 pr-1 text-sm" :class="live ? 'w-[27rem]' : 'max-w-md'" role="status">
+    <span class="mr-auto tabular-nums" :class="{ 'font-mono': tool === 'ruler' && ruler.info.value }">{{ text }}</span>
     <button v-if="finishable" type="button" class="act bg-signal text-ink" :disabled="!canFinish" @click="finish">
       Finish
     </button>
