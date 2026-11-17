@@ -85,6 +85,7 @@ function draw() {
     seen.clear();
   }
   labels!.removeAll();
+  v.scene.requestRender(); // the old grid has just been taken away
   if (!visible.value || v.scene.mode === Cesium.SceneMode.MORPHING) return;
 
   const rects = viewRects(v);
@@ -126,6 +127,10 @@ function draw() {
       });
     }
   }
+  // The grid is drawn outside the map engine's own bookkeeping, so say so;
+  // and again shortly after, once the names' pictures have been uploaded.
+  v.scene.requestRender();
+  setTimeout(() => !v.isDestroyed() && v.scene.requestRender(), 120);
 }
 
 /** Redraw soon, but not more often than REDRAW_EVERY_MS while the map moves. */

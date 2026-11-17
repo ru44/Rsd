@@ -131,7 +131,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 
       <div class="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex items-end gap-2">
         <BaseMapSwitch class="pointer-events-auto" />
-        <MarginBar class="pointer-events-auto flex-1" />
+        <MarginBar class="flex-1" />
       </div>
     </template>
 
