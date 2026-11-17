@@ -5,7 +5,6 @@ import { useMap } from "@/composables/useMap";
 import { useAreas } from "@/composables/useAreas";
 import { useSymbols } from "@/composables/useSymbols";
 import ZoomControl from "./ZoomControl.vue";
-import MenuSelect from "./MenuSelect.vue";
 import CompassButton from "./CompassButton.vue";
 import ScaleBar from "./ScaleBar.vue";
 import { heightAt, loadElevation } from "@/lib/elevation";
@@ -60,7 +59,9 @@ async function retry() {
   <!-- The strip itself lets clicks through to the map; only its pieces take them. -->
   <footer class="strip flex min-w-0 items-end gap-2 text-xs">
     <div class="panel flex h-10 min-w-0 items-center gap-2 pl-1 pr-3">
-      <MenuSelect v-model="format" :options="COORD_FORMATS.map((f) => ({ value: f, label: f }))" label="Coordinate format" up />
+      <select v-model="format" aria-label="Coordinate format" class="h-8 rounded-md bg-transparent px-1.5 text-dim hover:bg-raised hover:text-paper">
+        <option v-for="f in COORD_FORMATS" :key="f" :value="f" class="bg-ink text-paper">{{ f }}</option>
+      </select>
       <output v-if="position" aria-label="Position under the pointer" class="select-text truncate whitespace-nowrap font-mono text-sm text-paper">
         {{ position }}
       </output>
@@ -81,7 +82,7 @@ async function retry() {
     </div>
 
     <!-- One quiet line: scale, how far out the view is, and who made the map. -->
-    <div class="ml-auto flex h-6 min-w-0 items-center gap-3 whitespace-nowrap rounded-md bg-ink/80 px-2 text-[11px] text-dim">
+    <div class="ml-auto flex h-6 min-w-0 items-center gap-3 whitespace-nowrap rounded-md bg-ink/70 px-2 text-[11px] text-dim backdrop-blur-sm">
       <ScaleBar class="hidden md:flex" />
       <span class="hidden lg:inline">
         {{ is3D ? "Eye altitude" : "View width" }}
