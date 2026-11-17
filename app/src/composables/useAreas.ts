@@ -1,3 +1,4 @@
+import { SPRITE_SCALE, textSprite } from "@/lib/textSprite";
 import { ref, watch } from "vue";
 import axios from "axios";
 import * as Cesium from "cesium";
@@ -127,6 +128,14 @@ const outline = (kind: ShapeKind, pts: Pt[]) => (isPath(kind) || pts.length < 3 
 // A rectangle's sides follow the grid lines instead of the shortest path.
 const arcOf = (kind: ShapeKind) => (kind === "rect" ? Cesium.ArcType.RHUMB : Cesium.ArcType.GEODESIC);
 
+/** The picture of a text label: its words on a dark plate, lighter when selected. */
+const labelImage = (words: string, color: string, selected: boolean) =>
+  textSprite(words || SHAPE_LABEL.text, {
+    font: "600 15px 'Geist Variable', 'Segoe UI', sans-serif",
+    color,
+    background: selected ? "rgba(63, 63, 70, 0.95)" : "rgba(9, 9, 11, 0.8)",
+  });
+
 function drawShape(id: string, kind: ShapeKind, geo: ShapeGeo, color = DEFAULT_COLOR, name = "", vol: { floor: number; top: number } | null = null) {
   const entities = layer()?.entities;
   if (!entities) return;
@@ -137,13 +146,9 @@ function drawShape(id: string, kind: ShapeKind, geo: ShapeGeo, color = DEFAULT_C
     entities.add({
       id,
       position: Cesium.Cartesian3.fromDegrees(pts[0][0], pts[0][1]),
-      label: {
-        text: name || SHAPE_LABEL.text,
-        font: "600 15px 'Geist Variable', sans-serif",
-        fillColor: css,
-        showBackground: true,
-        backgroundColor: INK.withAlpha(0.8),
-        backgroundPadding: new Cesium.Cartesian2(7, 5),
+      billboard: {
+        image: labelImage(name, color, false),
+        scale: 1 / SPRITE_SCALE,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
       },
     });
@@ -462,7 +467,7 @@ function beginEdit(id: number) {
       () => Cesium.Cartesian3.fromDegrees(...(editing?.pts[0] ?? pts[0])),
       false
     ) as unknown as Cesium.PositionProperty;
-    if (entity.label) entity.label.backgroundColor = new Cesium.ConstantProperty(Cesium.Color.fromCssColorString("#3F3F46"));
+    if (entity.billboard) entity.billboard.image = new Cesium.ConstantProperty(labelImage(area.name, area.color ?? DEFAULT_COLOR, true));
     return;
   }
   if (!entity.polyline) return;

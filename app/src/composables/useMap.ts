@@ -175,6 +175,11 @@ export function useMap() {
       selectionIndicator: false,
     });
 
+    // Draw at the screen's real sharpness (up to twice the nominal size), so
+    // lines and names are not blurred on high-density and scaled displays.
+    v.useBrowserRecommendedResolution = false;
+    v.resolutionScale = Math.min(1, 2 / (window.devicePixelRatio || 1));
+
     // Default double-click zooms onto an entity and locks the camera to it.
     v.cesiumWidget.screenSpaceEventHandler.removeInputAction(
       Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK

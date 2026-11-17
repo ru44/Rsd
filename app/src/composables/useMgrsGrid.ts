@@ -1,3 +1,4 @@
+import { SPRITE_SCALE, textSprite } from "@/lib/textSprite";
 import { ref, watch } from "vue";
 import * as Cesium from "cesium";
 import { useMap } from "./useMap";
@@ -20,7 +21,7 @@ const ZONE_NAMES_BELOW_M = 13_000_000;
 
 const visible = ref(true);
 let lines: Cesium.PolylineCollection | null = null;
-let labels: Cesium.LabelCollection | null = null;
+let labels: Cesium.BillboardCollection | null = null;
 let fontsReady = false;
 let lastDraw = 0;
 let pending: ReturnType<typeof setTimeout> | null = null;
@@ -107,14 +108,8 @@ function draw() {
       const style = STYLE[label.level];
       labels.add({
         position: Cesium.Cartesian3.fromDegrees(label.lon, label.lat),
-        text: label.text,
-        font: style.font,
-        fillColor: style.text,
-        outlineColor: Cesium.Color.BLACK,
-        outlineWidth: 2,
-        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-        verticalOrigin: Cesium.VerticalOrigin.CENTER,
+        image: textSprite(label.text, { font: style.font, color: style.text.toCssColorString(), halo: "rgba(9, 9, 11, 0.85)" }),
+        scale: 1 / SPRITE_SCALE,
         distanceDisplayCondition: label.level === 0 ? nearOnly : undefined,
       });
     }
@@ -137,7 +132,7 @@ export function useMgrsGrid() {
     const v = useMap().viewer.value;
     if (!v || lines) return;
     lines = v.scene.primitives.add(new Cesium.PolylineCollection());
-    labels = v.scene.primitives.add(new Cesium.LabelCollection());
+    labels = v.scene.primitives.add(new Cesium.BillboardCollection());
 
     v.camera.changed.addEventListener(schedule);
     v.camera.moveEnd.addEventListener(schedule);

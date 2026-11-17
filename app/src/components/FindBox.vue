@@ -12,6 +12,7 @@ import { formatCoord } from "@/lib/coords";
 import { parseCoord } from "@/lib/parseCoord";
 import { countryName, fold, loadPlaces, searchPlaces, viewHeightM } from "@/lib/places";
 import { SHAPE_LABEL, kindOf } from "@/lib/shapes";
+import { SPRITE_SCALE, textSprite } from "@/lib/textSprite";
 
 // Find a place three ways: type a position in any format, the name of
 // something already on the map, or the name of a city. Nothing here needs
@@ -63,13 +64,9 @@ function showPin(lon: number, lat: number, label: string) {
       outlineWidth: 3,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     },
-    label: {
-      text: label,
-      font: "500 13px 'Geist Variable', sans-serif",
-      fillColor: Cesium.Color.fromCssColorString("#FAFAFA"),
-      showBackground: true,
-      backgroundColor: Cesium.Color.fromCssColorString("#09090B").withAlpha(0.9),
-      backgroundPadding: new Cesium.Cartesian2(7, 5),
+    billboard: {
+      image: textSprite(label, { font: "500 13px 'Geist Variable', 'Segoe UI', sans-serif", color: "#FAFAFA", background: "rgba(9, 9, 11, 0.9)" }),
+      scale: 1 / SPRITE_SCALE,
       verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
       pixelOffset: new Cesium.Cartesian2(0, -14),
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
