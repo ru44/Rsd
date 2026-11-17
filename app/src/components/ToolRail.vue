@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, type Component } from "vue";
+import { computed, ref, type Component } from "vue";
 import { Circle, Flag, Globe, Hand, Map, Maximize, MousePointer2, MoveUpRight, Pentagon, Redo2, Route, Ruler, Square, Type, Undo2, Waypoints } from "lucide-vue-next";
 import { useMap } from "@/composables/useMap";
 import { useClearView } from "@/composables/useClearView";
@@ -31,36 +31,13 @@ const DRAW: Item[] = [
 // The rail is a single button showing the tool in hand until the pointer or
 // the keyboard reaches it; then it opens to show every tool.
 const open = ref(false);
-/** The single button is held back until the closing animation has finished. */
-const single = ref(true);
-const rail = ref<HTMLElement | null>(null);
-/** How far the pointer may stray from the rail before it closes, in pixels. */
-const REACH = 110;
-let near = false;
-
+let closing: ReturnType<typeof setTimeout> | undefined;
 function show() {
-  near = true;
-  single.value = false;
+  clearTimeout(closing);
   open.value = true;
-  window.removeEventListener("pointermove", watchPointer);
 }
-// Leaving the rail does not close it. It closes once the pointer is well away.
-function watchPointer(e: PointerEvent) {
-  const r = rail.value?.getBoundingClientRect();
-  if (!r) return;
-  const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right);
-  const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom);
-  if (Math.hypot(dx, dy) <= REACH) return;
-  near = false;
-  window.removeEventListener("pointermove", watchPointer);
-  if (!rail.value?.contains(document.activeElement) || !rail.value.matches(":focus-within:has(:focus-visible)")) open.value = false;
-}
-const leave = () => window.addEventListener("pointermove", watchPointer);
-// Reached with the keyboard: it closes when focus moves on, unless the pointer is close by.
-function focusLeft(e: FocusEvent) {
-  if (!near && !rail.value?.contains(e.relatedTarget as Node | null)) open.value = false;
-}
-onBeforeUnmount(() => window.removeEventListener("pointermove", watchPointer));
+// A short wait, so brushing past the edge does not snap it shut.
+const hide = () => (closing = setTimeout(() => (open.value = false), 350));
 const inHand = computed(() => {
   const t = tool.value;
   if (t === "symbol" || pickerOpen.value) return { label: "Military symbol", icon: Flag };
@@ -85,9 +62,9 @@ function toggleSymbols() {
 </script>
 
 <template>
-  <nav ref="rail" class="panel min-h-[42px] p-1" aria-label="Map tools" @mouseenter="show" @mouseleave="leave" @focusin="show" @focusout="focusLeft">
+  <nav class="panel flex flex-col gap-0.5 p-1" aria-label="Map tools" @mouseenter="show" @mouseleave="hide" @focusin="show" @focusout="hide">
     <button
-      v-if="single"
+      v-if="!open"
       type="button"
       class="icon-btn tool"
       aria-pressed="true"
@@ -97,9 +74,7 @@ function toggleSymbols() {
     >
       <component :is="inHand.icon" class="h-4 w-4" aria-hidden="true" />
     </button>
-    <Transition name="rail" @after-leave="single = true">
-    <div v-if="open" class="all">
-    <div class="flex min-h-0 flex-col gap-0.5">
+    <template v-else>
     <template v-for="(group, g) in [MOVE, DRAW]" :key="g">
       <hr v-if="g > 0" class="rule" />
       <button
@@ -176,31 +151,11 @@ function toggleSymbols() {
       <Maximize class="h-4 w-4" aria-hidden="true" />
       <span class="tip" aria-hidden="true">Full screen, no controls <kbd class="kbd">F</kbd></span>
     </button>
-    </div>
-    </div>
-    </Transition>
+    </template>
   </nav>
 </template>
 
 <style scoped>
-/* Opening and closing: the rail grows from, and shrinks back to, one button. */
-.all {
-  display: grid;
-  grid-template-rows: 1fr;
-}
-.rail-enter-active,
-.rail-leave-active {
-  transition: grid-template-rows 0.22s ease-out, opacity 0.22s ease-out;
-}
-.rail-enter-active > div,
-.rail-leave-active > div {
-  overflow: hidden; /* only while moving, so the hover labels are not cut off afterwards */
-}
-.rail-enter-from,
-.rail-leave-to {
-  grid-template-rows: 0fr;
-  opacity: 0;
-}
 .tool {
   @apply relative;
 }

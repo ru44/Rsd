@@ -3,7 +3,6 @@ import { computed } from "vue";
 import { Undo2 } from "lucide-vue-next";
 import { ROAD_ROUTES, ROUTING_HOST, SPEEDS, useRoute } from "@/composables/useRoute";
 import { tool } from "@/composables/tool";
-import MenuSelect from "./MenuSelect.vue";
 import { formatCoord } from "@/lib/coords";
 import { formatDuration } from "@/lib/route";
 import { formatDistance } from "@/lib/shapes";
@@ -41,9 +40,11 @@ const letter = (i: number) => String.fromCharCode(65 + (i % 26));
         <dt class="text-xs text-dim">Time</dt>
         <dd class="text-right font-mono">{{ formatDuration(route.durationS) }}</dd>
         <template v-if="mode === 'straight'">
-          <dt class="text-xs text-dim">Going</dt>
-          <dd class="flex justify-end">
-            <MenuSelect v-model="speedKmh" :options="SPEEDS.map((s) => ({ value: s.kmh, label: `${s.label}, ${s.kmh} km/h` }))" label="Speed" class="rounded-md border border-edge" />
+          <dt class="text-xs text-dim"><label for="route-speed">Going</label></dt>
+          <dd class="text-right">
+            <select id="route-speed" v-model.number="speedKmh" class="h-7 rounded-md border border-edge bg-transparent px-1.5 text-xs">
+              <option v-for="s in SPEEDS" :key="s.kmh" :value="s.kmh" class="bg-ink">{{ s.label }}, {{ s.kmh }} km/h</option>
+            </select>
           </dd>
         </template>
       </dl>

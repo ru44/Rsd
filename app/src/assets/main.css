@@ -22,8 +22,7 @@ body {
 @layer components {
   /* Every floating piece of chrome sits on this. */
   .panel {
-    /* No blur of the map behind: it would be worked out again on every frame. */
-    @apply rounded-lg border border-edge bg-ink/95 text-paper shadow-md shadow-black/30;
+    @apply rounded-lg border border-edge bg-ink/90 text-paper shadow-md shadow-black/30 backdrop-blur-md;
   }
   /* A square button holding one small icon. */
   .icon-btn {
