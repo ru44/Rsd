@@ -171,9 +171,6 @@ export function useMap() {
       // second for ever. This is what keeps the app light when the map is still.
       requestRenderMode: true,
       maximumRenderTimeChange: Infinity,
-      // Never faster than 60 frames a second. On a fast monitor the map
-      // would otherwise draw 150 to 240 times a second for no visible gain.
-      targetFrameRate: 60,
       // Half the usual edge smoothing: far cheaper on large screens, still clean lines.
       msaaSamples: 2,
       // Cesium's logo strip is parked off-screen; the margin bar credits the
