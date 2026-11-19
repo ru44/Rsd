@@ -1,9 +1,11 @@
 import { computed, ref, shallowRef } from "vue";
 import * as Cesium from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
+import { desktopApiUrl, previewTile, type MapInfo } from "@/lib/desktop";
 
+/** The desktop app runs its own API on a free port and says where. */
 export const API_URL: string =
-  import.meta.env.VITE_API_URL ?? "http://localhost:7000";
+  desktopApiUrl ?? import.meta.env.VITE_API_URL ?? "http://localhost:7000";
 /** Set VITE_ONLINE_MAPS=false to leave out every base map that needs the internet. */
 export const ONLINE_MAPS: boolean = import.meta.env.VITE_ONLINE_MAPS !== "false";
 
@@ -54,6 +56,12 @@ const MAX_GLOBE_M = 20_000_000;
 const MAX_FLAT_M = 40_000_000;
 const maxHeightM = computed(() => (is3D.value ? MAX_GLOBE_M : MAX_FLAT_M));
 const hasSatellite = ref(false);
+/** A small picture of the satellite (or added) map, for its button. */
+const satellitePreview = ref("");
+/** The desktop app's added map file; null on the web or when there is none. */
+const mapFile = ref<MapInfo | null>(null);
+/** Bumped whenever the map file changes, so no old tile is shown from cache. */
+let mapVersion = 0;
 const baseMap = ref<BaseMapId>("world");
 /** The map object under the pointer, for choosing the mouse cursor. */
 const hover = ref<string | null>(null);
@@ -132,16 +140,52 @@ async function findSatelliteLayer(v: Cesium.Viewer) {
   } catch {
     return; // backend not running: stay on the built-in map
   }
+  // The desktop app also says what its map file covers; the server does not.
+  const info: MapInfo | null = await fetch(`${base}/info`)
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
   if (v.isDestroyed()) return;
+  const stamp = `?v=${++mapVersion}`;
   satelliteLayer = v.imageryLayers.addImageryProvider(
-    new Cesium.UrlTemplateImageryProvider({ url: `${base}/{z}/{x}/{y}`, maximumLevel: 18 }),
+    new Cesium.UrlTemplateImageryProvider({
+      url: `${base}/{z}/{x}/{y}${stamp}`,
+      maximumLevel: info?.maxzoom ?? 18,
+      ...(info?.bounds && { rectangle: Cesium.Rectangle.fromDegrees(...info.bounds) }),
+    }),
     1 // just above the built-in map, below anything added later
   );
+  mapFile.value = info;
+  satellitePreview.value = `${base}/${previewTile(info).join("/")}${stamp}`;
   hasSatellite.value = true;
   // Imagery wins by default, unless the person already chose something else.
   const saved = savedBaseMap();
   if (!saved || saved === "satellite") baseMap.value = "satellite";
   applyBaseMap();
+}
+
+/**
+ * Looks again after the desktop app's map file changed. A new file is shown
+ * straight away, and the view moves to it when it covers one region.
+ */
+async function reloadSatelliteLayer() {
+  const v = viewer.value;
+  if (!v) return;
+  if (satelliteLayer) v.imageryLayers.remove(satelliteLayer, true);
+  satelliteLayer = null;
+  hasSatellite.value = false;
+  mapFile.value = null;
+  if (baseMap.value === "satellite") baseMap.value = "world";
+  await findSatelliteLayer(v);
+  if (!hasSatellite.value) return applyBaseMap();
+  baseMap.value = "satellite";
+  try {
+    localStorage.setItem(BASE_MAP_KEY, "satellite");
+  } catch {
+    // storage blocked: fine for this session
+  }
+  applyBaseMap();
+  const b = mapFile.value?.bounds;
+  if (b && b[2] - b[0] < 90) v.camera.flyTo({ destination: Cesium.Rectangle.fromDegrees(...b), duration: 1.2 });
 }
 
 export function useMap() {
@@ -403,6 +447,9 @@ export function useMap() {
     zoomTo,
     zoomBy,
     hasSatellite,
+    satellitePreview,
+    mapFile,
+    reloadSatelliteLayer,
     baseMap,
     hover,
     pressed,
