@@ -13,7 +13,7 @@ import { COORD_FORMATS, formatCoord, type CoordFormat } from "@/lib/coords";
 
 // Along the bottom edge: where the pointer is, how far out the view is, and
 // whether the work is stored.
-const { cursor, is3D, cameraHeightKm, cameraHeightM, baseMap, pitch, toggleTilt } = useMap();
+const { cursor, is3D, cameraHeightKm, cameraHeightM, baseMap, mapFile, pitch, toggleTilt } = useMap();
 const leaning = computed(() => pitch.value > -80);
 const areas = useAreas();
 const symbols = useSymbols();
@@ -38,7 +38,7 @@ const credit = computed(() =>
   baseMap.value === "streets"
     ? "© OpenStreetMap contributors"
     : baseMap.value === "satellite"
-      ? "Satellite tiles from the backend"
+      ? (mapFile.value?.name ?? "Satellite tiles from the backend")
       : "Natural Earth · CesiumJS"
 );
 

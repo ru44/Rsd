@@ -1,13 +1,42 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { Satellite } from "lucide-vue-next";
-import { API_URL, ONLINE_MAPS, useMap, type BaseMapId } from "@/composables/useMap";
+import { Plus, Satellite } from "lucide-vue-next";
+import { ONLINE_MAPS, useMap, type BaseMapId } from "@/composables/useMap";
+import { addMapFile, isDesktop, removeMapFile } from "@/lib/desktop";
 
 // Chooses the picture under everything else. Three choices work without
 // the internet; "Streets" is the one that does not, and says so.
-const { baseMap, hasSatellite, setBaseMap, pressed } = useMap();
+// In the desktop app the third choice is a map file the person adds.
+const { baseMap, hasSatellite, satellitePreview, mapFile, reloadSatelliteLayer, setBaseMap, pressed } = useMap();
 const open = ref(false);
 watch(pressed, (down) => down && (open.value = false));
+
+/** True while the file chooser is open, so the panel stays put. */
+const choosing = ref(false);
+const mapError = ref("");
+
+async function chooseMapFile() {
+  if (choosing.value) return;
+  choosing.value = true;
+  mapError.value = "";
+  try {
+    if (await addMapFile()) await reloadSatelliteLayer();
+  } catch (e) {
+    mapError.value = String(e);
+  } finally {
+    choosing.value = false;
+  }
+}
+
+async function dropMapFile() {
+  mapError.value = "";
+  try {
+    await removeMapFile();
+    await reloadSatelliteLayer();
+  } catch (e) {
+    mapError.value = String(e);
+  }
+}
 
 // A piece of the built-in map showing the Red Sea, used as a preview.
 const WORLD_TILE = `${import.meta.env.BASE_URL}cesium/Assets/Textures/NaturalEarthII/2/4/2.jpg`;
@@ -26,10 +55,11 @@ const choices = computed<Choice[]>(() => {
     { id: "dark", name: "Dark", style: { ...world, filter: "brightness(0.5) saturate(0.3)" } },
     {
       id: "satellite",
-      name: "Satellite",
-      disabled: !hasSatellite.value,
+      name: isDesktop ? (hasSatellite.value ? "My map" : "Add map") : "Satellite",
+      // In the desktop app an empty slot opens the file chooser instead.
+      disabled: !hasSatellite.value && !isDesktop,
       style: hasSatellite.value
-        ? { backgroundImage: `url(${API_URL}/api/tiles/raster/0/0/0)`, backgroundSize: "cover" }
+        ? { backgroundImage: `url(${satellitePreview.value})`, backgroundSize: "cover" }
         : { background: "#18181B" },
     },
   ];
@@ -53,10 +83,12 @@ const current = computed(() => choices.value.find((c) => c.id === baseMap.value)
 
 function pick(c: Choice) {
   if (c.disabled) return;
+  if (c.id === "satellite" && !hasSatellite.value) return void chooseMapFile();
   setBaseMap(c.id);
   open.value = false;
 }
 function onFocusOut(e: FocusEvent) {
+  if (choosing.value) return;
   if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) open.value = false;
 }
 </script>
@@ -89,13 +121,28 @@ function onFocusOut(e: FocusEvent) {
           @click="pick(c)"
         >
           <span class="swatch" :style="c.style">
-            <Satellite v-if="c.id === 'satellite' && c.disabled" class="h-5 w-5 text-dim" aria-hidden="true" />
+            <template v-if="c.id === 'satellite' && !hasSatellite">
+              <Plus v-if="isDesktop" class="h-5 w-5 text-dim" aria-hidden="true" />
+              <Satellite v-else class="h-5 w-5 text-dim" aria-hidden="true" />
+            </template>
           </span>
           <span>{{ c.name }}</span>
           <span v-if="c.note" class="text-[10px] leading-none text-dim">{{ c.note }}</span>
         </button>
       </div>
-      <p v-if="!hasSatellite" class="mt-2 max-w-[17rem] leading-relaxed text-dim">
+      <template v-if="isDesktop">
+        <div v-if="mapFile" class="mt-2 flex max-w-[17rem] items-center gap-2">
+          <span class="min-w-0 flex-1 truncate text-paper" :title="mapFile.path">{{ mapFile.name }}</span>
+          <button type="button" class="link" @click="chooseMapFile">Change</button>
+          <button type="button" class="link" @click="dropMapFile">Remove</button>
+        </div>
+        <p v-else class="mt-2 max-w-[17rem] leading-relaxed text-dim">
+          Add a map file you have downloaded: an <code class="font-mono text-paper">.mbtiles</code> file of pictures,
+          such as one made with QGIS.
+        </p>
+        <p v-if="mapError" class="mt-2 max-w-[17rem] leading-relaxed text-hostile" role="alert">{{ mapError }}</p>
+      </template>
+      <p v-else-if="!hasSatellite" class="mt-2 max-w-[17rem] leading-relaxed text-dim">
         For satellite pictures, put <code class="font-mono text-paper">satellite.mbtiles</code> in the backend's storage folder.
       </p>
     </div>
@@ -123,6 +170,9 @@ function onFocusOut(e: FocusEvent) {
 }
 .choice:disabled {
   @apply cursor-not-allowed opacity-60;
+}
+.link {
+  @apply shrink-0 text-dim underline-offset-2 hover:text-paper hover:underline;
 }
 .swatch {
   @apply flex h-12 w-16 items-center justify-center rounded-md border border-edge;

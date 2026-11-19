@@ -1,0 +1,22 @@
+[package]
+name = "rsgis-desktop"
+version = "0.1.0"
+description = "rsGIS for the desktop"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+axum = "0.8"
+tokio = { version = "1", features = ["net", "rt-multi-thread", "macros"] }
+tower-http = { version = "0.6", features = ["cors"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

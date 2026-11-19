@@ -6,6 +6,10 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // The desktop app (src-tauri) loads the dev server from this exact port
+  // and prints its own messages in the same terminal.
+  clearScreen: false,
+  server: { port: 5173, strictPort: true },
   plugins: [
     vue(),
     vueDevTools(),
