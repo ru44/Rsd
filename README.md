@@ -10,6 +10,22 @@ An open-source GIS built in Rust. It shows a 3D globe and flat map that work off
 
 <sub>The screenshots show sample drawings.</sub>
 
+## Download
+
+Get the desktop app from [Releases](https://github.com/ru44/Rsd/releases/latest). Each file is named `rsgis-VERSION-SYSTEM-ARCH`:
+
+| System | Files |
+|---|---|
+| Windows (x86_64, Arm) | `-setup.exe` installer, or `.msi` (x86_64 only) |
+| macOS (Apple silicon, Intel) | `.dmg` |
+| Linux (x86_64, aarch64) | `.AppImage`, `.flatpak`, `.deb`, `.rpm` |
+
+`SHA256SUMS` lists every file's checksum. The apps aren't code-signed yet:
+
+- **Windows:** SmartScreen may warn you; choose **More info → Run anyway**.
+- **macOS:** if it says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/rsGIS.app`.
+- **Flatpak:** install with `flatpak install --user rsgis-*.flatpak`. It pulls the GNOME runtime from Flathub.
+
 ## Desktop app
 
 The desktop app is the same map in its own window, built with [Tauri](https://tauri.app). It needs no server or Docker:
@@ -45,6 +61,16 @@ cd app && pnpm install && pnpm dev   # map on http://localhost:5173
 ```
 
 For satellite pictures, put `satellite.mbtiles` in `backend/storage/`.
+
+## Making a release
+
+Push a version tag. The [release workflow](.github/workflows/release.yml) builds every file above and publishes the release:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+To also sign each file (`.asc`), add the repository secrets `GPG_PRIVATE_KEY` (an armored private key) and `GPG_PASSPHRASE`.
 
 ## Data credits
 

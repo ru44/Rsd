@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.8.0",
   "scripts": {
     "copy-cesium": "node scripts/copy-cesium.mjs",
     "dev": "node scripts/copy-cesium.mjs && vite",

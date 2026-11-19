@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.rsgis.desktop</id>
+  <name>rsGIS</name>
+  <summary>Offline 3D map with military symbols</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <developer id="io.github.ru44">
+    <name>ru44</name>
+  </developer>
+  <description>
+    <p>
+      A 3D globe and flat map that work offline, with an MGRS grid, military symbols
+      (MIL-STD-2525C), drawing and measuring tools and 3D volumes. Add map files
+      (.mbtiles) you have downloaded; drawings are saved on this computer.
+    </p>
+  </description>
+  <launchable type="desktop-id">org.rsgis.desktop.desktop</launchable>
+  <url type="homepage">https://github.com/ru44/Rsd</url>
+  <categories>
+    <category>Education</category>
+    <category>Geography</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+</component>

@@ -1,0 +1,38 @@
+# Flatpak of the desktop app, made from the .deb that `tauri build` produces.
+# The release workflow copies that .deb here as rsgis.deb before building:
+#   flatpak-builder --user --install-deps-from=flathub --repo=repo build org.rsgis.desktop.yml
+id: org.rsgis.desktop
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: rsgis-desktop
+finish-args:
+  - --share=ipc
+  # The online Streets map. Saving goes to the app's own server on 127.0.0.1.
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Map files (.mbtiles) people have downloaded, read only.
+  - --filesystem=home:ro
+  - --filesystem=/media:ro
+  - --filesystem=/run/media:ro
+  - --filesystem=/mnt:ro
+modules:
+  - name: rsgis
+    buildsystem: simple
+    sources:
+      - type: file
+        path: rsgis.deb
+      - type: file
+        path: org.rsgis.desktop.metainfo.xml
+    build-commands:
+      - ar -x rsgis.deb
+      - tar -xf data.tar.gz
+      - install -Dm755 usr/bin/rsgis-desktop /app/bin/rsgis-desktop
+      - install -Dm644 usr/share/applications/rsGIS.desktop /app/share/applications/org.rsgis.desktop.desktop
+      - sed -i 's/^Icon=.*/Icon=org.rsgis.desktop/' /app/share/applications/org.rsgis.desktop.desktop
+      - install -Dm644 usr/share/icons/hicolor/32x32/apps/rsgis-desktop.png /app/share/icons/hicolor/32x32/apps/org.rsgis.desktop.png
+      - install -Dm644 usr/share/icons/hicolor/128x128/apps/rsgis-desktop.png /app/share/icons/hicolor/128x128/apps/org.rsgis.desktop.png
+      - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/rsgis-desktop.png /app/share/icons/hicolor/256x256/apps/org.rsgis.desktop.png
+      - install -Dm644 org.rsgis.desktop.metainfo.xml /app/share/metainfo/org.rsgis.desktop.metainfo.xml
