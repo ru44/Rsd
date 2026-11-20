@@ -3,11 +3,12 @@ import { computed, ref, watch } from "vue";
 import { Plus, Satellite } from "lucide-vue-next";
 import { ONLINE_MAPS, useMap, type BaseMapId } from "@/composables/useMap";
 import { addMapFile, isDesktop, removeMapFile } from "@/lib/desktop";
+import OpacitySlider from "./OpacitySlider.vue";
 
 // Chooses the picture under everything else. Three choices work without
 // the internet; "Streets" is the one that does not, and says so.
 // In the desktop app the third choice is a map file the person adds.
-const { baseMap, hasSatellite, satellitePreview, mapFile, reloadSatelliteLayer, setBaseMap, pressed } = useMap();
+const { baseMap, baseOpacity, hasSatellite, satellitePreview, mapFile, reloadSatelliteLayer, setBaseMap, pressed } = useMap();
 const open = ref(false);
 watch(pressed, (down) => down && (open.value = false));
 
@@ -107,8 +108,8 @@ function onFocusOut(e: FocusEvent) {
     </button>
 
     <Transition name="pop">
-    <div v-if="open" class="panel origin-bottom-left p-2 text-xs" role="radiogroup" aria-label="Base map">
-      <div class="flex gap-2">
+    <div v-if="open" class="panel origin-bottom-left p-2 text-xs">
+      <div class="flex gap-2" role="radiogroup" aria-label="Base map">
         <button
           v-for="c in choices"
           :key="c.id"
@@ -130,6 +131,7 @@ function onFocusOut(e: FocusEvent) {
           <span v-if="c.note" class="text-[10px] leading-none text-dim">{{ c.note }}</span>
         </button>
       </div>
+      <OpacitySlider v-model="baseOpacity" label="Base map opacity" class="mt-2 pl-1" />
       <template v-if="isDesktop">
         <div v-if="mapFile" class="mt-2 flex max-w-[17rem] items-center gap-2">
           <span class="min-w-0 flex-1 truncate text-paper" :title="mapFile.path">{{ mapFile.name }}</span>

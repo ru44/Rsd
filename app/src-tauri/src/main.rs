@@ -110,6 +110,9 @@ fn main() {
                 .title("rsGIS")
                 .inner_size(1360.0, 860.0)
                 .min_inner_size(800.0, 560.0)
+                // Files dropped on the window go to the page, which reads
+                // GeoJSON, KML and KMZ dropped onto the map.
+                .disable_drag_drop_handler()
                 .initialization_script(format!("window.__RSGIS_API__ = {api_url};"))
                 .build()?;
             Ok(())

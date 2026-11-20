@@ -23,15 +23,24 @@ const position = computed(() =>
   cursor.value ? formatCoord(cursor.value.lon, cursor.value.lat, format.value) : null
 );
 
-// Height of the ground under the pointer, or depth of the sea. The data is
+// Height of the ground under the pointer, or depth of the sea. Where the
+// server has terrain, it comes from that; elsewhere from a coarse world grid
 // fetched the first time the pointer is over the map.
 const elevationReady = ref(false);
 watch(cursor, (c) => c && !elevationReady.value && loadElevation().then(() => (elevationReady.value = true), () => {}), { once: true });
 const ground = computed(() => {
-  if (!cursor.value || !elevationReady.value) return null;
-  const m = heightAt(cursor.value.lon, cursor.value.lat);
+  if (!cursor.value) return null;
+  const fromTerrain = cursor.value.ground;
+  if (fromTerrain === undefined && !elevationReady.value) return null;
+  const m = fromTerrain !== undefined ? Math.round(fromTerrain) : heightAt(cursor.value.lon, cursor.value.lat);
   if (m === null) return null;
-  return { label: m < 0 ? "Depth" : "Height", text: `${Math.abs(m).toLocaleString("en")} m` };
+  // The world grid is rough, so its numbers are marked as about right.
+  const about = fromTerrain === undefined ? "≈ " : "";
+  return {
+    label: m < 0 ? "Depth" : "Height",
+    text: `${about}${Math.abs(m).toLocaleString("en")} m`,
+    note: about ? "Approximate: the average over about 14 km around this point" : "From the terrain (DTED) on the server",
+  };
 });
 
 const credit = computed(() =>
@@ -68,9 +77,9 @@ async function retry() {
       <span
         v-if="ground"
         class="hidden whitespace-nowrap border-l border-edge pl-2 text-dim sm:inline"
-        title="Approximate: the average over about 14 km around this point"
+        :title="ground.note"
       >
-        {{ ground.label }} <span class="font-mono text-sm text-paper">≈ {{ ground.text }}</span>
+        {{ ground.label }} <span class="font-mono text-sm text-paper">{{ ground.text }}</span>
       </span>
     </div>
 

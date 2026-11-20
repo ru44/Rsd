@@ -63,6 +63,11 @@ stays in the backend but v1 does not draw it (Cesium has no native vector-tile r
 Docker command; the backend serves the resulting folder as static files. Candidate tool:
 Cesium Terrain Builder (reads DTED through GDAL). The builder verifies the tool and may swap it.
 
+*As built (2026-11-20):* no conversion step. A small crate, `terrain/`, reads the DTED files in
+`backend/storage/dted` and the backend makes Cesium `heightmap-1.0` tiles from them on request
+(`/api/terrain/layer.json`, `/api/terrain/{z}/{x}/{y}.terrain`), plus a height query
+(`/api/terrain/height`). No GDAL or extra tool to install, and new files only need a restart.
+
 **Layers.** A layer store lists base imagery, terrain, symbols, markers, lines, areas, the MGRS
 grid and each imported file. Each entry has visibility and opacity.
 
@@ -94,7 +99,7 @@ with an `.env.example`.
 
 ## Calls made by the designer (not yet confirmed by the owner)
 
-- Apache-2.0 licence.
+- Apache-2.0 licence (confirmed by the owner, 2026-11-20).
 - Raster base map only in v1.
 - Imported files are not saved to the server.
 - OpenAPI + Swagger UI as the API documentation.

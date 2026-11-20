@@ -1,6 +1,7 @@
-// Reads GeoJSON and KML files into shapes and symbols for the map.
+// Reads GeoJSON, KML and KMZ files into shapes and symbols for the map.
 // Files written by this app come back exactly as they were; files from other
 // tools are read as far as they fit: polygons, lines and named points.
+import { strFromU8, unzipSync } from "fflate";
 import type { Pt, ShapeKind } from "./shapes";
 
 export interface ImportedShape {
@@ -137,4 +138,25 @@ export function fromKml(text: string): Imported {
 export function readMapFile(name: string, text: string): Imported {
   const looksXml = /\.kml$/i.test(name) || text.trimStart().startsWith("<");
   return looksXml ? fromKml(text) : fromGeoJson(text);
+}
+
+/** A zip file (and so a KMZ) begins with these four bytes. */
+const isZip = (b: Uint8Array) => b.length > 3 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
+
+/**
+ * A KMZ is a zip with the KML inside, usually doc.kml at the top, next to the
+ * pictures it uses. The pictures are left out.
+ */
+function kmlInKmz(bytes: Uint8Array): string {
+  const files = unzipSync(bytes, { filter: (f) => /\.kml$/i.test(f.name) });
+  const names = Object.keys(files).sort((a, b) => a.split("/").length - b.split("/").length);
+  const name = names.find((n) => n.toLowerCase() === "doc.kml") ?? names[0];
+  if (!name) throw new Error("No KML file inside the KMZ");
+  return strFromU8(files[name]);
+}
+
+/** Like readMapFile, for a file read as bytes, so KMZ can be read too. */
+export function readMapBytes(name: string, bytes: Uint8Array): Imported {
+  if (isZip(bytes)) return fromKml(kmlInKmz(bytes));
+  return readMapFile(name, strFromU8(bytes));
 }

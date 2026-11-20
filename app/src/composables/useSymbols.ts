@@ -6,6 +6,7 @@ import { API_URL, useMap, type LonLat } from "./useMap";
 import { EDIT_PREFIX, selection } from "./selection";
 import { tool } from "./tool";
 import { clearHistory, idTracker, record } from "./history";
+import { savedLevel } from "./prefs";
 
 export interface SymbolRec {
   id: number;
@@ -38,6 +39,9 @@ const unsaved = ref<Unsaved[]>([]);
 const placing = ref<{ sidc: string; name: string } | null>(null);
 const offline = ref(false);
 const visible = ref(true);
+/** How solid symbols look, from 0 (gone) to 1 (as drawn). */
+const opacity = savedLevel("rsgis.symbolsOpacity", 1);
+const tint = () => Cesium.Color.WHITE.withAlpha(opacity.value);
 
 let source: Cesium.CustomDataSource | null = null;
 let hooked = false;
@@ -71,10 +75,12 @@ function draw(id: string, sidc: string, [lon, lat]: [number, number]) {
     billboard: {
       image: new ms.Symbol(sidc, { size: MAP_SYMBOL_SIZE }).asCanvas(2),
       scale: 0.5,
+      color: tint(),
       // Shrink a little when far away so symbols do not swamp a wide view.
       scaleByDistance: new Cesium.NearFarScalar(4e5, 1, 1.5e7, 0.65),
       // Keep symbols visible instead of letting the globe clip them.
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
     },
   });
 }
@@ -100,6 +106,7 @@ function showRing(on: boolean) {
       outlineColor: Cesium.Color.fromCssColorString("#FAFAFA"),
       outlineWidth: 2,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
     },
   });
 }
@@ -243,6 +250,9 @@ export function useSymbols() {
     watch(visible, (show) => {
       if (source) source.show = show;
     });
+    watch(opacity, () => {
+      for (const e of source?.entities.values ?? []) if (e.billboard) e.billboard.color = new Cesium.ConstantProperty(tint());
+    });
     watch(selection, (sel) => showRing(sel?.kind === "symbol"));
     // Choosing any other tool puts the symbol down.
     watch(tool, (t) => {
@@ -315,6 +325,7 @@ export function useSymbols() {
     placing,
     offline,
     visible,
+    opacity,
     arm,
     load,
     flush,

@@ -1,27 +1,17 @@
-# Build stage
-FROM rust:1.88 AS builder
+# Built from the repository root, because it uses the terrain crate next to it:
+#   docker build -f backend/Dockerfile .
+FROM rust:1-bookworm AS builder
+WORKDIR /src
+COPY terrain ./terrain
+COPY backend ./backend
+WORKDIR /src/backend
+RUN cargo build --release --locked
 
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-
-# Install ca-certificates and update them
-RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates
-
-COPY . .
-
-RUN cargo build --release
-
-# Runtime stage
-FROM debian:latest
-
-RUN apt-get update && apt-get install -y libsqlite3-0 ca-certificates && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-# Copy compiled binary
-COPY --from=builder /app/target/release/rsgis ./rsgis
-
-# Copy MBTiles and other static files
-COPY storage ./storage
-
+COPY --from=builder /src/backend/target/release/rsgis ./rsgis
+# Map files and DTED terrain are mounted here (see docker-compose.yml).
+RUN mkdir -p storage/dted
 EXPOSE 7000
 CMD ["./rsgis"]

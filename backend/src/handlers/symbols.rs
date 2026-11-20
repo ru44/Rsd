@@ -2,25 +2,41 @@ use axum::{ extract::{ State, Json }, response::IntoResponse, http::StatusCode }
 use deadpool_postgres::Pool;
 use serde::{ Deserialize, Serialize };
 use serde_json::json;
+use utoipa::ToSchema;
 
-/// Struct used to receive symbol input from client (now using SIDC)
-#[derive(Deserialize, Debug)]
+/// A military symbol placed on the map.
+#[derive(Deserialize, Debug, ToSchema)]
 pub struct SymbolInput {
+    #[schema(example = "2nd Armoured")]
     pub name: String,
+    /// A GeoJSON Point in longitude and latitude.
+    #[schema(value_type = Object, example = json!({"type": "Point", "coordinates": [39.17, 21.54]}))]
     pub geojson: serde_json::Value,
+    /// The symbol code (SIDC), MIL-STD-2525 or APP-6: 15 letters or 20 digits.
+    #[schema(example = "SFGPUCA----K---")]
     pub sidc: String,
 }
 
-/// Struct used to return symbol data to client
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, ToSchema)]
 pub struct SymbolOutput {
     pub id: i32,
     pub name: String,
+    #[schema(value_type = Object, example = json!({"type": "Point", "coordinates": [39.17, 21.54]}))]
     pub geojson: serde_json::Value,
     pub sidc: String,
 }
 
 /// GET /symbols — return all symbols
+#[utoipa::path(
+    get,
+    path = "/api/symbols",
+    tag = "Symbols",
+    summary = "Every symbol, oldest first",
+    responses(
+        (status = 200, description = "The symbols", body = crate::docs::SymbolList),
+        (status = 500, description = "The database could not be reached", body = crate::docs::Status)
+    )
+)]
 pub async fn get_symbols(State(pool): State<Pool>) -> impl IntoResponse {
     let client = match pool.get().await {
         Ok(client) => client,
@@ -79,6 +95,18 @@ pub async fn get_symbols(State(pool): State<Pool>) -> impl IntoResponse {
 }
 
 /// POST /symbols — insert new symbol
+#[utoipa::path(
+    post,
+    path = "/api/symbols",
+    tag = "Symbols",
+    summary = "Place a symbol",
+    request_body = SymbolInput,
+    responses(
+        (status = 201, description = "The symbol as stored, with its id", body = crate::docs::SymbolReply),
+        (status = 400, description = "The GeoJSON is not a geometry this kind of item can have", body = crate::docs::Status),
+        (status = 500, description = "The database could not be reached", body = crate::docs::Status)
+    )
+)]
 pub async fn create_symbol(
     State(pool): State<Pool>,
     Json(input): Json<SymbolInput>
@@ -164,6 +192,15 @@ pub async fn create_symbol(
 }
 
 /// DELETE /symbols — delete all symbols
+#[utoipa::path(
+    delete,
+    path = "/api/symbols",
+    tag = "Symbols",
+    summary = "Delete every symbol",
+    responses(
+        (status = 200, description = "All gone", body = crate::docs::Status)
+    )
+)]
 pub async fn delete_symbols(State(pool): State<Pool>) -> impl IntoResponse {
     let client = match pool.get().await {
         Ok(client) => client,
@@ -192,9 +229,10 @@ pub async fn delete_symbols(State(pool): State<Pool>) -> impl IntoResponse {
 }
 
 /// Fields a client may change on a symbol. Anything left out stays as it is.
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct SymbolPatch {
     name: Option<String>,
+    #[schema(value_type = Object, example = json!({"type": "Point", "coordinates": [39.17, 21.54]}))]
     geojson: Option<serde_json::Value>,
     sidc: Option<String>,
 }
@@ -203,7 +241,19 @@ fn error(status: StatusCode, message: String) -> axum::response::Response {
     (status, Json(json!({ "status": "error", "message": message }))).into_response()
 }
 
-/// PUT /api/symbols/{id}: move one symbol or change its name or code.
+#[utoipa::path(
+    put,
+    path = "/api/symbols/{id}",
+    tag = "Symbols",
+    summary = "Move a symbol, or change its name or code",
+    params(("id" = i32, Path, description = "The id the server gave it")),
+    request_body = SymbolPatch,
+    responses(
+        (status = 200, description = "The symbol as it is now", body = crate::docs::SymbolReply),
+        (status = 400, description = "The GeoJSON is not a geometry this kind of item can have", body = crate::docs::Status),
+        (status = 404, description = "There is nothing with that id", body = crate::docs::Status)
+    )
+)]
 pub async fn update_symbol(
     State(pool): State<Pool>,
     axum::extract::Path(id): axum::extract::Path<i32>,
@@ -242,6 +292,17 @@ pub async fn update_symbol(
 }
 
 /// DELETE /api/symbols/{id}: remove one symbol.
+#[utoipa::path(
+    delete,
+    path = "/api/symbols/{id}",
+    tag = "Symbols",
+    summary = "Delete one symbol",
+    params(("id" = i32, Path, description = "The id the server gave it")),
+    responses(
+        (status = 200, description = "Deleted", body = crate::docs::Status),
+        (status = 404, description = "There is nothing with that id", body = crate::docs::Status)
+    )
+)]
 pub async fn delete_symbol(
     State(pool): State<Pool>,
     axum::extract::Path(id): axum::extract::Path<i32>

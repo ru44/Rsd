@@ -1,0 +1,52 @@
+name: rsgis
+
+# The whole web version in one go: the map, the API and the database.
+# First copy .env.example to .env and set a password, then: docker compose up -d
+# The map is then on http://localhost:8080 and the API documentation on
+# http://localhost:8080/api/docs.
+
+services:
+  web:
+    build: ./app
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "${API_PORT:-7000}:7000"
+    depends_on:
+      postgis:
+        condition: service_healthy
+    # Map files (satellite.mbtiles) and DTED terrain (dted/) go in here.
+    volumes:
+      - ./backend/storage:/app/storage
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgis:5432/${POSTGRES_DB}
+    restart: unless-stopped
+
+  postgis:
+    image: postgis/postgis:15-3.3
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?copy .env.example to .env first}
+      POSTGRES_USER: ${POSTGRES_USER:?copy .env.example to .env first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env first}
+    # Only this computer can reach the database, for running the API outside Docker.
+    ports:
+      - "127.0.0.1:${DB_PORT:-5444}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

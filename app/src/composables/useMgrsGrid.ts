@@ -1,4 +1,4 @@
-import { savedSwitch } from "./prefs";
+import { savedLevel, savedSwitch } from "./prefs";
 import { ref, watch } from "vue";
 import * as Cesium from "cesium";
 import { useMap } from "./useMap";
@@ -16,13 +16,20 @@ const STYLE: Record<Level, { line: Cesium.Color; text: Cesium.Color; width: numb
   3: { line: PAPER.withAlpha(0.35), text: PAPER, width: 1, font: "11px 'Geist Variable', sans-serif" },
 };
 const REDRAW_EVERY_MS = 150;
+const fade = (c: Cesium.Color) => c.withAlpha(c.alpha * opacity.value);
 /** Eye altitude (globe) or view width (flat map) under which zone names fit. */
 const ZONE_NAMES_BELOW_M = 13_000_000;
 
 const visible = savedSwitch("rsgis.grid", true);
 /** The zone and square names. The lines can be shown without them. */
 const namesVisible = savedSwitch("rsgis.gridNames", true);
+/** How solid the grid looks, from 0 (gone) to 1. */
+const opacity = savedLevel("rsgis.gridOpacity", 1);
 let lines: Cesium.PolylineCollection | null = null;
+/** Over terrain the lines are laid on the ground instead, by this. */
+let groundLines: Cesium.GroundPolylinePrimitive | null = null;
+/** Ground lines need Cesium's rough heights of the world loaded first. */
+let groundReady = false;
 let labels: Cesium.LabelCollection | null = null;
 let fontsReady = false;
 let lastDraw = 0;
@@ -78,6 +85,8 @@ function draw() {
   lastDraw = Date.now();
   lines.removeAll();
   labels.removeAll();
+  if (groundLines) v.scene.groundPrimitives.remove(groundLines);
+  groundLines = null;
   if (!visible.value || v.scene.mode === Cesium.SceneMode.MORPHING) return;
 
   const rects = viewRects(v);
@@ -92,18 +101,37 @@ function draw() {
   const zoneNames = metres < ZONE_NAMES_BELOW_M;
   // On the globe, names near the edge are squeezed into a pile. They are also
   // the farthest from the eye, so a distance cut-off drops exactly those.
+  const hilly = v.scene.mode === Cesium.SceneMode.SCENE3D && !(v.terrainProvider instanceof Cesium.EllipsoidTerrainProvider);
   const nearOnly = v.scene.mode === Cesium.SceneMode.SCENE3D
     ? new Cesium.DistanceDisplayCondition(0, metres * 1.45)
     : undefined;
-  for (const rect of rects) {
+  // Over hills, lines at sea level would show in the wrong place as soon as
+  // the view leans, so they are draped over the ground.
+  const drape = hilly && groundReady;
+  const draped: Cesium.GeometryInstance[] = [];
+  // The view is worked out at sea level; raised ground near the eye shows
+  // a little more than that, so reach a little further.
+  for (const rect of hilly ? rects.map(widen) : rects) {
     const grid = buildGrid(rect, level, zoneNames);
     for (const line of grid.lines) {
+      if (drape) {
+        draped.push(
+          new Cesium.GeometryInstance({
+            geometry: new Cesium.GroundPolylineGeometry({
+              positions: Cesium.Cartesian3.fromDegreesArray(line.points.flat()),
+              width: STYLE[line.level].width,
+            }),
+            attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(fade(STYLE[line.level].line)) },
+          })
+        );
+        continue;
+      }
       lines.add({
         positions: Cesium.Cartesian3.fromDegreesArray(line.points.flat()),
         width: STYLE[line.level].width,
         // One material per line: Cesium destroys a line's material when the
         // line is removed, so a shared one would break on the next redraw.
-        material: Cesium.Material.fromType("Color", { color: STYLE[line.level].line }),
+        material: Cesium.Material.fromType("Color", { color: fade(STYLE[line.level].line) }),
       });
     }
     for (const label of namesVisible.value ? grid.labels : []) {
@@ -112,16 +140,39 @@ function draw() {
         position: Cesium.Cartesian3.fromDegrees(label.lon, label.lat),
         text: label.text,
         font: style.font,
-        fillColor: style.text,
-        outlineColor: Cesium.Color.BLACK,
+        fillColor: fade(style.text),
+        outlineColor: fade(Cesium.Color.BLACK),
         outlineWidth: 2,
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
         horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
         verticalOrigin: Cesium.VerticalOrigin.CENTER,
         distanceDisplayCondition: label.level === 0 ? nearOnly : undefined,
+        // Over hills, names sit on the ground and stay in front of it.
+        heightReference: hilly ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE,
+        disableDepthTestDistance: hilly ? Number.POSITIVE_INFINITY : undefined,
       });
     }
   }
+  if (draped.length) {
+    // Built at once rather than in the background, so the grid never blinks.
+    groundLines = v.scene.groundPrimitives.add(
+      new Cesium.GroundPolylinePrimitive({
+        geometryInstances: draped,
+        appearance: new Cesium.PolylineColorAppearance(),
+        asynchronous: false,
+      })
+    );
+  }
+}
+
+function widen(r: Rect): Rect {
+  const [dx, dy] = [(r.east - r.west) * 0.15, (r.north - r.south) * 0.15];
+  return {
+    west: Math.max(-180, r.west - dx),
+    south: Math.max(-90, r.south - dy),
+    east: Math.min(180, r.east + dx),
+    north: Math.min(90, r.north + dy),
+  };
 }
 
 /** Redraw soon, but not more often than REDRAW_EVERY_MS while the map moves. */
@@ -140,12 +191,21 @@ export function useMgrsGrid() {
     const v = useMap().viewer.value;
     if (!v || lines) return;
     lines = v.scene.primitives.add(new Cesium.PolylineCollection());
-    labels = v.scene.primitives.add(new Cesium.LabelCollection());
+    // Given the scene, so names can sit on the terrain.
+    labels = v.scene.primitives.add(new Cesium.LabelCollection({ scene: v.scene }));
+    Cesium.GroundPolylinePrimitive.initializeTerrainHeights()
+      .then(() => {
+        groundReady = true;
+        schedule();
+      })
+      .catch(() => {});
 
-    v.camera.changed.addEventListener(schedule);
+    // A grid laid on the ground stays put as the map moves, and costs more to
+    // build, so it is only rebuilt once the map comes to rest.
+    v.camera.changed.addEventListener(() => groundLines || schedule());
     v.camera.moveEnd.addEventListener(schedule);
     v.scene.morphComplete.addEventListener(schedule);
-    watch([visible, namesVisible], draw);
+    watch([visible, namesVisible, opacity, useMap().terrainShown, useMap().hasTerrain], draw);
     // Cesium caches label glyphs, so wait for the font or the first labels
     // would be stuck in the fallback face.
     Promise.all([document.fonts.load("600 13px 'Geist Variable'"), document.fonts.load("12px 'Geist Variable'")])
@@ -156,5 +216,5 @@ export function useMgrsGrid() {
       });
   }
 
-  return { visible, namesVisible, attach };
+  return { visible, namesVisible, opacity, attach };
 }

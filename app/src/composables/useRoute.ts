@@ -49,7 +49,7 @@ function draw() {
     all.add({
       id: `${ID}-stop-${i}`,
       position: Cesium.Cartesian3.fromDegrees(p[0], p[1]),
-      point: { pixelSize: 20, color: LINE, outlineColor: INK, outlineWidth: 2, disableDepthTestDistance: Number.POSITIVE_INFINITY },
+      point: { pixelSize: 20, color: LINE, outlineColor: INK, outlineWidth: 2, disableDepthTestDistance: Number.POSITIVE_INFINITY, heightReference: Cesium.HeightReference.CLAMP_TO_GROUND },
       label: {
         text: letter(i),
         font: "600 12px 'Geist Variable', sans-serif",
@@ -57,6 +57,7 @@ function draw() {
         verticalOrigin: Cesium.VerticalOrigin.CENTER,
         horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
       },
     })
   );
