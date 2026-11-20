@@ -1,35 +1,36 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import * as Cesium from "cesium";
 import { Layers, Trash2, Upload, X } from "lucide-vue-next";
-import { readMapFile } from "@/lib/importers";
 import { toGeoJson, toKml } from "@/lib/exporters";
 import { useMap } from "@/composables/useMap";
 import { useAreas } from "@/composables/useAreas";
 import { useSymbols } from "@/composables/useSymbols";
 import { useMgrsGrid } from "@/composables/useMgrsGrid";
 import { selection } from "@/composables/selection";
+import { IMPORT_ACCEPT, useImport } from "@/composables/useImport";
+import { layersOpen as open } from "@/composables/tool";
+import OpacitySlider from "./OpacitySlider.vue";
 
-const { viewer, pressed } = useMap();
-const { visible: gridVisible, namesVisible: gridNames } = useMgrsGrid();
+const { viewer, pressed, hasTerrain, terrainShown } = useMap();
+const { visible: gridVisible, namesVisible: gridNames, opacity: gridOpacity } = useMgrsGrid();
 const {
   areas,
   unsaved: unsavedAreas,
   visible: areasVisible,
+  opacity: areasOpacity,
   removeAll: removeAreas,
-  addMany: addAreas,
   goTo,
 } = useAreas();
 const {
   symbols,
   unsaved: unsavedSymbols,
   visible: symbolsVisible,
+  opacity: symbolsOpacity,
   removeAll: removeSymbols,
-  addMany: addSymbols,
 } = useSymbols();
+const { importNote, importFile } = useImport();
 
 // An icon until it is wanted, and again as soon as the map is in use.
-const open = ref(false);
 watch(pressed, (down) => {
   if (down && !confirming.value) {
     open.value = false;
@@ -71,45 +72,11 @@ function exportImage() {
 }
 
 const picker = ref<HTMLInputElement | null>(null);
-/** What the last file brought in, or why it could not be read. */
-const importNote = ref("");
-const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-
-async function importFile(e: Event) {
+async function chooseFile(e: Event) {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = ""; // so the same file can be chosen again
-  if (!file) return;
-  let found;
-  try {
-    found = readMapFile(file.name, await file.text());
-  } catch {
-    importNote.value = `${file.name} could not be read. Use a GeoJSON or KML file.`;
-    return;
-  }
-  const { shapes, symbols: syms, skipped } = found;
-  if (!shapes.length && !syms.length) {
-    importNote.value = `Nothing in ${file.name} can be shown on the map.`;
-    return;
-  }
-  await Promise.all([addAreas(shapes), addSymbols(syms.map((s) => ({ ...s, coords: [s.coords[0], s.coords[1]] })))]);
-  importNote.value =
-    `Added ${[shapes.length && count(shapes.length, "shape"), syms.length && count(syms.length, "symbol")].filter(Boolean).join(" and ")}` +
-    (skipped ? `; ${count(skipped, "item")} left out.` : ".");
-  // Bring everything that was added into view.
-  const all = [...shapes.flatMap((s) => s.pts), ...syms.map((s) => s.coords)];
-  const lons = all.map((p) => p[0]);
-  const lats = all.map((p) => p[1]);
-  const pad = Math.max(0.05, (Math.max(...lons) - Math.min(...lons)) * 0.2, (Math.max(...lats) - Math.min(...lats)) * 0.2);
-  viewer.value?.camera.flyTo({
-    destination: Cesium.Rectangle.fromDegrees(
-      Math.max(-180, Math.min(...lons) - pad),
-      Math.max(-90, Math.min(...lats) - pad),
-      Math.min(180, Math.max(...lons) + pad),
-      Math.min(90, Math.max(...lats) + pad)
-    ),
-    duration: 1.2,
-  });
+  if (file) await importFile(file);
 }
 
 async function removeConfirmed() {
@@ -137,6 +104,11 @@ async function removeConfirmed() {
     </header>
 
     <div class="border-t border-edge py-1">
+      <label v-if="hasTerrain" class="row" title="Hills and valleys from the server's DTED files, on the globe">
+        <input v-model="terrainShown" type="checkbox" class="box" />
+        Terrain
+        <span class="ml-auto text-xs text-dim">DTED</span>
+      </label>
       <label class="row">
         <input v-model="gridVisible" type="checkbox" class="box" />
         MGRS grid
@@ -146,6 +118,7 @@ async function removeConfirmed() {
         <input v-model="gridNames" type="checkbox" class="box" :disabled="!gridVisible" />
         Grid names
       </label>
+      <OpacitySlider v-if="gridVisible" v-model="gridOpacity" label="Grid opacity" class="level" />
 
       <div class="row">
         <label class="flex flex-1 cursor-pointer items-center gap-2.5">
@@ -164,6 +137,7 @@ async function removeConfirmed() {
           <Trash2 class="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
+      <OpacitySlider v-if="areasVisible" v-model="areasOpacity" label="Shapes opacity" class="level" />
       <ul v-if="areas.length" class="max-h-40 overflow-y-auto pb-1">
         <li v-for="a in areas" :key="a.id">
           <button
@@ -195,6 +169,7 @@ async function removeConfirmed() {
           <Trash2 class="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
+      <OpacitySlider v-if="symbolsVisible" v-model="symbolsOpacity" label="Symbols opacity" class="level" />
 
       <div v-if="confirming" class="mx-2 my-1 rounded-md bg-raised p-2" role="alertdialog">
         <p>Delete all {{ confirming === "areas" ? "shapes" : "symbols" }}? This cannot be undone.</p>
@@ -220,11 +195,11 @@ async function removeConfirmed() {
       </div>
       <div class="flex items-center gap-1.5 px-3 pb-1.5 pt-1 text-xs">
         <span class="mr-auto text-dim">Import</span>
-        <button type="button" class="export flex items-center gap-1.5" title="Add shapes and symbols from a GeoJSON or KML file" @click="picker?.click()">
+        <button type="button" class="export flex items-center gap-1.5" title="Add shapes and symbols from a GeoJSON, KML or KMZ file. You can also drop the file onto the map." @click="picker?.click()">
           <Upload class="h-3.5 w-3.5" aria-hidden="true" />
-          GeoJSON or KML
+          GeoJSON, KML, KMZ
         </button>
-        <input ref="picker" type="file" accept=".geojson,.json,.kml,application/geo+json,application/vnd.google-earth.kml+xml" class="hidden" aria-label="File to import" @change="importFile" />
+        <input ref="picker" type="file" :accept="IMPORT_ACCEPT" class="hidden" aria-label="File to import" @change="chooseFile" />
       </div>
       <p v-if="importNote" class="px-3 pb-2 text-xs leading-relaxed text-dim" role="status">{{ importNote }}</p>
     </div>
@@ -241,6 +216,10 @@ async function removeConfirmed() {
 }
 .icon {
   @apply rounded-md p-1 text-dim;
+}
+/* Under its layer, lined up with the layer's name. */
+.level {
+  @apply -mt-1 pb-1.5 pl-9 pr-3;
 }
 .icon:hover {
   @apply bg-raised text-hostile;

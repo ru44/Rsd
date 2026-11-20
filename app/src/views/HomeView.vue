@@ -20,8 +20,9 @@ import { useViewLink } from "@/composables/useViewLink";
 import { useRuler } from "@/composables/useRuler";
 import { redo, undo } from "@/composables/history";
 import { railShown } from "@/composables/prefs";
-import { ChevronRight } from "lucide-vue-next";
-import { pickerOpen, tool, type Tool } from "@/composables/tool";
+import { ChevronRight, FileUp } from "lucide-vue-next";
+import { layersOpen, pickerOpen, tool, type Tool } from "@/composables/tool";
+import { useImport } from "@/composables/useImport";
 
 const { toggleMode, zoomBy, resetNorth, toggleTilt } = useMap();
 const areas = useAreas();
@@ -32,6 +33,23 @@ const { selection, deselect } = useSelection();
 const { attach: attachViewLink } = useViewLink();
 const ruler = useRuler();
 const find = ref<InstanceType<typeof FindBox> | null>(null);
+const { importFile } = useImport();
+
+// Files dragged in from outside the page can be dropped anywhere on the map.
+// The cover that says so takes the drop, so the map below never sees it.
+const dropping = ref(false);
+const carriesFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes("Files");
+function onDragEnter(e: DragEvent) {
+  if (carriesFiles(e) && !clear.value) dropping.value = true;
+}
+async function onDrop(e: DragEvent) {
+  dropping.value = false;
+  const files = Array.from(e.dataTransfer?.files ?? []);
+  if (!files.length) return;
+  // The Layers panel shows what was added, or why a file could not be read.
+  layersOpen.value = true;
+  for (const file of files) await importFile(file);
+}
 
 const TOOL_KEYS: Record<string, Tool> = { h: "hand", v: "select", r: "rect", c: "circle", p: "polygon", l: "line", a: "arrow", t: "text", m: "ruler", d: "route" };
 
@@ -107,8 +125,12 @@ onMounted(() => {
   areas.load();
   symbols.load();
   window.addEventListener("keydown", onKey);
+  window.addEventListener("dragenter", onDragEnter);
 });
-onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onKey);
+  window.removeEventListener("dragenter", onDragEnter);
+});
 </script>
 
 <template>
@@ -151,6 +173,22 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
         <MarginBar class="flex-1" />
       </div>
     </template>
+
+    <transition name="fade">
+      <div
+        v-if="dropping"
+        class="absolute inset-0 z-30 flex items-center justify-center bg-ink/55 p-6"
+        @dragover.prevent
+        @dragleave.self="dropping = false"
+        @drop.prevent="onDrop"
+      >
+        <div class="panel pointer-events-none flex flex-col items-center gap-2 border-dashed border-paper/40 px-8 py-6 text-center">
+          <FileUp class="h-6 w-6 text-signal" aria-hidden="true" />
+          <p class="font-medium">Drop to add it to the map</p>
+          <p class="text-xs text-dim">GeoJSON, KML or KMZ</p>
+        </div>
+      </div>
+    </transition>
 
     <!-- Shown for a moment on entering the clear view, then gone. -->
     <transition name="fade">

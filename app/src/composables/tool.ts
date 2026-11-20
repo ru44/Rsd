@@ -13,6 +13,9 @@ export const tool = ref<Tool>("select");
 /** True while the list of symbols to choose from is open. */
 export const pickerOpen = ref(false);
 
+/** True while the Layers panel is open rather than shrunk to its button. */
+export const layersOpen = ref(false);
+
 export type DrawTool = "rect" | "circle" | "polygon" | "line" | "arrow";
 export const isDrawTool = (t: Tool): t is DrawTool =>
   t === "rect" || t === "circle" || t === "polygon" || t === "line" || t === "arrow";

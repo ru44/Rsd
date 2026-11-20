@@ -1,0 +1,8 @@
+[package]
+name = "rsgis-terrain"
+version = "0.1.0"
+description = "Reads DTED elevation files and serves them as terrain tiles for CesiumJS"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]

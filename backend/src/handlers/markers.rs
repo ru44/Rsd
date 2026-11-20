@@ -2,23 +2,38 @@ use axum::{ extract::{ State, Json }, response::IntoResponse, http::StatusCode }
 use deadpool_postgres::Pool;
 use serde::{ Deserialize, Serialize };
 use serde_json::json;
+use utoipa::ToSchema;
 
-#[derive(Deserialize)]
+/// A plain named point.
+#[derive(Deserialize, ToSchema)]
 pub struct MarkerInput {
     name: String,
+    /// A GeoJSON Point in longitude and latitude.
+    #[schema(value_type = Object, example = json!({"type": "Point", "coordinates": [39.17, 21.54]}))]
     geojson: serde_json::Value,
-    // Optional color for the marker (e.g. "#ff0000")
+    /// Colour as #rrggbb.
     color: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct MarkerOutput {
     id: i32,
     name: String,
+    #[schema(value_type = Object, example = json!({"type": "Point", "coordinates": [39.17, 21.54]}))]
     geojson: serde_json::Value,
     color: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/markers",
+    tag = "Markers",
+    summary = "Every marker",
+    responses(
+        (status = 200, description = "The markers", body = crate::docs::MarkerList),
+        (status = 500, description = "The database could not be reached", body = crate::docs::Status)
+    )
+)]
 pub async fn get_markers(State(pool): State<Pool>) -> impl IntoResponse {
     let client = match pool.get().await {
         Ok(client) => client,
@@ -72,6 +87,18 @@ pub async fn get_markers(State(pool): State<Pool>) -> impl IntoResponse {
     (StatusCode::OK, Json(json!({ "status": "success", "data": markers })))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/markers",
+    tag = "Markers",
+    summary = "Add a marker",
+    request_body = MarkerInput,
+    responses(
+        (status = 201, description = "The marker as stored, with its id", body = MarkerOutput),
+        (status = 400, description = "The GeoJSON is not a geometry this kind of item can have", body = crate::docs::Status),
+        (status = 500, description = "The database could not be reached", body = crate::docs::Status)
+    )
+)]
 pub async fn create_marker(
     State(pool): State<Pool>,
     Json(input): Json<MarkerInput>
@@ -129,6 +156,16 @@ pub async fn create_marker(
     (StatusCode::CREATED, Json(marker)).into_response()
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/markers",
+    tag = "Markers",
+    summary = "Delete every marker",
+    responses(
+        (status = 200, description = "All gone", body = crate::docs::Status),
+        (status = 500, description = "The database could not be reached", body = crate::docs::Status)
+    )
+)]
 pub async fn delete_markers(State(pool): State<Pool>) -> impl IntoResponse {
     let client = match pool.get().await {
         Ok(client) => client,

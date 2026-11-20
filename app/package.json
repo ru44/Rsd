@@ -2,6 +2,7 @@
   "name": "app",
   "version": "0.0.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "packageManager": "pnpm@11.8.0",
   "scripts": {
@@ -20,6 +21,7 @@
     "@tauri-apps/api": "^2.12.5",
     "axios": "^1.21.1",
     "cesium": "^1.147.0",
+    "fflate": "^0.8.3",
     "lucide-vue-next": "0.525.0",
     "mgrs": "^2.2.0",
     "mil-std-2525": "^0.2.8",
