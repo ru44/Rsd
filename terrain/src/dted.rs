@@ -94,7 +94,7 @@ impl Cell {
                 return Err(format!("DTED data record {col} is damaged"));
             }
             let data = &bytes[start + 8..start + 8 + 2 * h.rows];
-            heights.extend(data.chunks_exact(2).map(|p| decode(u16::from_be_bytes([p[0], p[1]]))));
+            heights.extend((0..h.rows).map(|r| decode(u16::from_be_bytes([data[2 * r], data[2 * r + 1]]))));
         }
         Ok(Cell { lon0: h.lon0, lat0: h.lat0, cols: h.cols, rows: h.rows, heights })
     }
