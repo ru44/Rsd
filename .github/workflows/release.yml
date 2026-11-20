@@ -1,0 +1,192 @@
+name: Release
+
+# A tag such as v0.2.0 builds the desktop app for every system and publishes
+# a GitHub release with the files. Changes to the packaging run the same
+# builds on pull requests, without publishing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - app/src-tauri/flatpak/**
+      - app/src-tauri/tauri.conf.json
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        name: From the tag, or from tauri.conf.json
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            v="${GITHUB_REF_NAME#v}"
+          else
+            v=$(jq -r .version app/src-tauri/tauri.conf.json)
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.os }} ${{ matrix.arch }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: linux, arch: x86_64, runner: ubuntu-22.04, target: x86_64-unknown-linux-gnu, bundles: "deb,rpm,appimage" }
+          - { os: linux, arch: aarch64, runner: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu, bundles: "deb,rpm,appimage" }
+          - { os: windows, arch: x86_64, runner: windows-latest, target: x86_64-pc-windows-msvc, bundles: "msi,nsis" }
+          # Built on x64; the MSI format has no Arm version, the setup.exe does.
+          - { os: windows, arch: aarch64, runner: windows-latest, target: aarch64-pc-windows-msvc, bundles: "nsis" }
+          - { os: macos, arch: aarch64, runner: macos-latest, target: aarch64-apple-darwin, bundles: "dmg" }
+          - { os: macos, arch: x86_64, runner: macos-latest, target: x86_64-apple-darwin, bundles: "dmg" }
+    runs-on: ${{ matrix.runner }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install WebKitGTK and friends
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xdg-utils
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+          key: ${{ matrix.target }}
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: app/package.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: app
+      - name: Build
+        working-directory: app
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config "{\"version\":\"$VERSION\"}"
+      - name: Name the files rsgis-VERSION-SYSTEM-ARCH
+        run: |
+          b=app/src-tauri/target/${{ matrix.target }}/release/bundle
+          n="rsgis-$VERSION-${{ matrix.os }}-${{ matrix.arch }}"
+          mkdir out
+          case "${{ matrix.os }}" in
+            linux)
+              cp "$b"/deb/*.deb "out/$n.deb"
+              cp "$b"/rpm/*.rpm "out/$n.rpm"
+              cp "$b"/appimage/*.AppImage "out/$n.AppImage" ;;
+            windows)
+              cp "$b"/nsis/*-setup.exe "out/$n-setup.exe"
+              if [ -d "$b/msi" ]; then cp "$b"/msi/*.msi "out/$n.msi"; fi ;;
+            macos)
+              cp "$b"/dmg/*.dmg "out/$n.dmg" ;;
+          esac
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rsgis-${{ matrix.os }}-${{ matrix.arch }}
+          path: out/*
+          if-no-files-found: error
+
+  flatpak:
+    name: flatpak ${{ matrix.arch }}
+    needs: [version, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-24.04 }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: rsgis-linux-${{ matrix.arch }}
+          path: linux
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          # Ubuntu 24.04 limits the user namespaces the build sandbox needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Build
+        working-directory: app/src-tauri/flatpak
+        run: |
+          cp "$GITHUB_WORKSPACE/linux/rsgis-$VERSION-linux-${{ matrix.arch }}.deb" rsgis.deb
+          flatpak-builder --user --install-deps-from=flathub --disable-rofiles-fuse --force-clean --repo=repo build org.rsgis.desktop.yml
+      - name: Check the runtime has every library the app needs
+        working-directory: app/src-tauri/flatpak
+        run: |
+          flatpak-builder --run build org.rsgis.desktop.yml ldd /app/bin/rsgis-desktop | tee ldd.txt
+          if grep "not found" ldd.txt; then exit 1; fi
+      - name: Bundle
+        working-directory: app/src-tauri/flatpak
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          flatpak build-bundle repo "$GITHUB_WORKSPACE/out/rsgis-$VERSION-linux-${{ matrix.arch }}.flatpak" org.rsgis.desktop \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rsgis-flatpak-${{ matrix.arch }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    name: Publish
+    needs: [version, build, flatpak]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      # Optional: an armored private key (and its passphrase) to sign each file.
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Checksums
+        working-directory: out
+        run: sha256sum * > SHA256SUMS
+      - name: Signatures
+        if: env.GPG_PRIVATE_KEY != ''
+        working-directory: out
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          for f in *; do
+            gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --armor --detach-sign "$f"
+          done
+      - name: Publish the release
+        run: |
+          flags=()
+          if [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" \
+            --title "rsGIS $VERSION" --generate-notes "${flags[@]}"
