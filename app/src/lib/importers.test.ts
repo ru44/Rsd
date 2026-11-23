@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { fromGeoJson, fromKml, readMapFile } from "./importers";
+import { strToU8, zipSync } from "fflate";
+import { fromGeoJson, fromKml, readMapBytes, readMapFile } from "./importers";
 import { toGeoJson, toKml } from "./exporters";
 import { circleRing, rectRing, toGeo, type Pt } from "./shapes";
 
@@ -72,5 +73,31 @@ describe("KML", () => {
     expect(readMapFile("a.kml", toKml(shapes, symbols)).shapes).toHaveLength(6);
     expect(readMapFile("a.json", JSON.stringify(toGeoJson(shapes, symbols))).shapes).toHaveLength(6);
     expect(readMapFile("export", toKml(shapes, symbols)).symbols).toHaveLength(1);
+  });
+});
+
+describe("KMZ", () => {
+  const kml = () => strToU8(toKml(shapes, symbols));
+  it("reads the KML inside a KMZ", () => {
+    const got = readMapBytes("a.kmz", zipSync({ "doc.kml": kml(), "files/icon.png": new Uint8Array([1, 2]) }));
+    expect(got.shapes).toHaveLength(6);
+    expect(got.symbols).toHaveLength(1);
+  });
+  it("finds the KML when it has another name or sits in a folder", () => {
+    expect(readMapBytes("b.kmz", zipSync({ "data/places.kml": kml() })).shapes).toHaveLength(6);
+  });
+  it("prefers doc.kml at the top over other KML files", () => {
+    const other = strToU8(toKml(shapes.slice(0, 1), []));
+    expect(readMapBytes("c.kmz", zipSync({ "a/other.kml": other, "doc.kml": kml() })).shapes).toHaveLength(6);
+  });
+  it("knows a KMZ by its content, whatever the name", () => {
+    expect(readMapBytes("download", zipSync({ "doc.kml": kml() })).shapes).toHaveLength(6);
+  });
+  it("refuses a zip with no KML in it", () => {
+    expect(() => readMapBytes("d.kmz", zipSync({ "readme.txt": strToU8("hi") }))).toThrow();
+  });
+  it("still reads plain KML and GeoJSON given as bytes", () => {
+    expect(readMapBytes("a.kml", kml()).shapes).toHaveLength(6);
+    expect(readMapBytes("a.geojson", strToU8(JSON.stringify(toGeoJson(shapes, symbols)))).shapes).toHaveLength(6);
   });
 });

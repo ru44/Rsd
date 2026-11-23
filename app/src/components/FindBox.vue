@@ -62,6 +62,7 @@ function showPin(lon: number, lat: number, label: string) {
       outlineColor: Cesium.Color.fromCssColorString("#09090B"),
       outlineWidth: 3,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
     },
     label: {
       text: label,
@@ -73,6 +74,7 @@ function showPin(lon: number, lat: number, label: string) {
       verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
       pixelOffset: new Cesium.Cartesian2(0, -14),
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
     },
   });
 }

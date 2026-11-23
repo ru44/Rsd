@@ -6,7 +6,19 @@ use axum::{
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
 
-// Serve satellite raster tiles
+/// Picture tiles from `storage/satellite.mbtiles`, in the usual XYZ layout.
+/// A tile the file does not have comes back as an empty, see-through PNG.
+#[utoipa::path(
+    get,
+    path = "/api/tiles/raster/{z}/{x}/{y}",
+    tag = "Map tiles",
+    summary = "A satellite picture tile",
+    params(("z" = u8, Path, description = "Zoom level"), ("x" = u32, Path, description = "Column, from the west"), ("y" = u32, Path, description = "Row, from the north (XYZ)")),
+    responses(
+        (status = 200, description = "PNG, JPEG or WebP picture", content_type = "image/png"),
+        (status = 404, description = "There is no satellite.mbtiles")
+    )
+)]
 pub async fn get_raster_tile(Path((z, x, y)): Path<(u8, u32, u32)>) -> Response {
     // MBTiles uses TMS (flipped Y) coordinate system
     let tile_y = (1 << z) - 1 - y;
@@ -83,7 +95,17 @@ pub async fn get_raster_tile(Path((z, x, y)): Path<(u8, u32, u32)>) -> Response 
     }
 }
 
-// Serve vector tiles
+/// Vector tiles from `storage/saudi.mbtiles`. Empty where there is none.
+#[utoipa::path(
+    get,
+    path = "/api/tiles/vector/{z}/{x}/{y}",
+    tag = "Map tiles",
+    summary = "A vector tile (Mapbox Vector Tile)",
+    params(("z" = u8, Path, description = "Zoom level"), ("x" = u32, Path, description = "Column, from the west"), ("y" = u32, Path, description = "Row, from the north (XYZ)")),
+    responses(
+        (status = 200, description = "Protocol buffer, possibly gzipped", content_type = "application/x-protobuf")
+    )
+)]
 pub async fn get_vector_tile(Path((z, x, y)): Path<(u8, u32, u32)>) -> Response {
     let tile_y = (1 << z) - 1 - y;
     let db_path = PathBuf::from("storage/saudi.mbtiles");

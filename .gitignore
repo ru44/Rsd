@@ -1,3 +1,5 @@
 node_modules
 backend/storage/*
 backend/target/*
+# Database password and ports for docker compose; see .env.example
+/.env

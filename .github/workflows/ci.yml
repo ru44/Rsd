@@ -62,13 +62,28 @@ jobs:
         working-directory: app/src-tauri
 
   backend:
-    name: Server (builds)
+    name: Server and terrain (tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: backend
-      - run: cargo build --locked
+          workspaces: |
+            backend
+            terrain
+      - run: cargo test --locked
+        working-directory: terrain
+      - run: cargo clippy --locked --all-targets -- -D warnings
+        working-directory: terrain
+      - run: cargo test --locked
         working-directory: backend
+
+  docker:
+    name: Docker images (build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: cp .env.example .env && docker compose build

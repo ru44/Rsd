@@ -52,6 +52,7 @@ function label(id: string, position: Cesium.Cartesian3 | Cesium.CallbackProperty
       // Clear of the point it belongs to, so the point can still be clicked.
       pixelOffset: new Cesium.Cartesian2(0, strong ? -26 : 0),
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
     },
   });
 }
@@ -142,7 +143,7 @@ function add(pos: LonLat) {
   entities()?.add({
     id: `${ID}-pt-${i}`,
     position: cart(here),
-    point: { pixelSize: 9, color: SIGNAL, outlineColor: INK, outlineWidth: 2, disableDepthTestDistance: Number.POSITIVE_INFINITY },
+    point: { pixelSize: 9, color: SIGNAL, outlineColor: INK, outlineWidth: 2, disableDepthTestDistance: Number.POSITIVE_INFINITY, heightReference: Cesium.HeightReference.CLAMP_TO_GROUND },
   });
   // The leg that starts here gets its own length, which follows the pointer
   // until the next click fixes it.

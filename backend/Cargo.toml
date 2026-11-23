@@ -2,6 +2,7 @@
 name = "rsgis"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
 
 [dependencies]
 axum = "0.8.4"
@@ -14,3 +15,6 @@ tokio-postgres = { version = "0.7", features = ["with-uuid-0_8"] }
 dotenvy = "0.15"
 tower-http = { version = "0.6.6", features = ["cors", "trace"] }
 uuid = { version = "1", features = ["serde", "v4"] }
+utoipa = "6"
+utoipa-swagger-ui = { version = "10", features = ["axum", "vendored"] }
+rsgis-terrain = { version = "0.1.0", path = "../terrain" }

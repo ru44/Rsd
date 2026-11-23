@@ -1,7 +1,8 @@
-import { computed, ref, shallowRef } from "vue";
+import { computed, ref, shallowRef, watch } from "vue";
 import * as Cesium from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import { desktopApiUrl, previewTile, type MapInfo } from "@/lib/desktop";
+import { savedLevel, savedSwitch } from "./prefs";
 
 /** The desktop app runs its own API on a free port and says where. */
 export const API_URL: string =
@@ -12,6 +13,8 @@ export const ONLINE_MAPS: boolean = import.meta.env.VITE_ONLINE_MAPS !== "false"
 export interface LonLat {
   lon: number;
   lat: number;
+  /** Metres above sea level of the ground there, when the server has terrain for it. */
+  ground?: number;
 }
 /** `entityId` is the map object under the pointer, if any. Return true to claim the click. */
 type MapClick = (pos: LonLat, entityId: string | null) => boolean | void;
@@ -58,11 +61,24 @@ const maxHeightM = computed(() => (is3D.value ? MAX_GLOBE_M : MAX_FLAT_M));
 const hasSatellite = ref(false);
 /** A small picture of the satellite (or added) map, for its button. */
 const satellitePreview = ref("");
+/** True once the server has said it has terrain (DTED) to show. */
+const hasTerrain = ref(false);
+/** Whether that terrain is shown, or the globe kept smooth. */
+const terrainShown = savedSwitch("rsgis.terrain", true);
+/** West, south, east and north edges of the terrain the server has. */
+let terrainBounds: [number, number, number, number] | null = null;
+let terrainProvider: Cesium.TerrainProvider | null = null;
+const SMOOTH = new Cesium.EllipsoidTerrainProvider();
 /** The desktop app's added map file; null on the web or when there is none. */
 const mapFile = ref<MapInfo | null>(null);
 /** Bumped whenever the map file changes, so no old tile is shown from cache. */
 let mapVersion = 0;
 const baseMap = ref<BaseMapId>("world");
+/**
+ * How solid the base map looks. Below 1 an added map lets the built-in one
+ * show through, and the built-in one lets the plain globe show through.
+ */
+const baseOpacity = savedLevel("rsgis.baseOpacity", 1);
 /** The map object under the pointer, for choosing the mouse cursor. */
 const hover = ref<string | null>(null);
 /** True while the left button is held down on the map. */
@@ -88,14 +104,46 @@ let streetsLayer: Cesium.ImageryLayer | null = null;
 /** Whether Shift is down, for "keep it square" while drawing. */
 export const shiftHeld = () => shift;
 
+const onTerrain = (v: Cesium.Viewer) =>
+  v.terrainProvider === terrainProvider && v.scene.mode === Cesium.SceneMode.SCENE3D;
+
 function pick(v: Cesium.Viewer, screen: Cesium.Cartesian2): LonLat | null {
-  const cart = v.camera.pickEllipsoid(screen, v.scene.globe.ellipsoid);
+  // Over hills, the place under the pointer is where the line of sight meets
+  // the ground, not the smooth globe below it.
+  const ray = onTerrain(v) ? v.camera.getPickRay(screen) : undefined;
+  const cart = (ray && v.scene.globe.pick(ray, v.scene)) || v.camera.pickEllipsoid(screen, v.scene.globe.ellipsoid);
   if (!cart) return null;
   const c = Cesium.Cartographic.fromCartesian(cart);
-  return {
-    lon: Cesium.Math.toDegrees(c.longitude),
-    lat: Cesium.Math.toDegrees(c.latitude),
-  };
+  const lon = Cesium.Math.toDegrees(c.longitude);
+  const lat = Cesium.Math.toDegrees(c.latitude);
+  const b = terrainBounds;
+  const inside = ray && b && lon >= b[0] && lon <= b[2] && lat >= b[1] && lat <= b[3];
+  return inside ? { lon, lat, ground: c.height } : { lon, lat };
+}
+
+/** Shows the server's terrain, or a smooth globe. */
+function applyTerrain() {
+  const v = viewer.value;
+  if (!v) return;
+  const want = terrainShown.value && terrainProvider ? terrainProvider : SMOOTH;
+  if (v.terrainProvider !== want) v.terrainProvider = want;
+}
+
+/** Looks for terrain on the server and shows it if there is some. */
+async function findTerrain(v: Cesium.Viewer) {
+  const base = `${API_URL}/api/terrain`;
+  try {
+    const res = await fetch(`${base}/layer.json`);
+    if (!res.ok) return;
+    const layer = await res.json();
+    terrainProvider = await Cesium.CesiumTerrainProvider.fromUrl(base);
+    if (Array.isArray(layer.bounds) && layer.bounds.length === 4) terrainBounds = layer.bounds;
+  } catch {
+    return; // no server, or no terrain on it: keep the smooth globe
+  }
+  if (v.isDestroyed()) return;
+  hasTerrain.value = true;
+  applyTerrain();
 }
 
 // A few pixels of slack, so thin lines and small handles are easy to hit.
@@ -129,6 +177,11 @@ function applyBaseMap() {
     );
   }
   if (streetsLayer) streetsLayer.show = id === "streets";
+  const op = baseOpacity.value;
+  const onTop = (id === "satellite" && satelliteLayer) || (id === "streets" && streetsLayer) || worldLayer;
+  worldLayer.alpha = onTop === worldLayer ? op : 1;
+  if (satelliteLayer) satelliteLayer.alpha = op;
+  if (streetsLayer) streetsLayer.alpha = op;
 }
 
 /** Looks for the backend's satellite tiles and offers them if they are there. */
@@ -218,6 +271,9 @@ export function useMap() {
       infoBox: false,
       selectionIndicator: false,
     });
+
+    // What shows where the base map is see-through, or not yet loaded.
+    v.scene.globe.baseColor = Cesium.Color.fromCssColorString("#18181B");
 
     // Open the app with ?fps in the address to see how fast the map is drawing.
     if (new URLSearchParams(location.search).has("fps")) v.scene.debugShowFramesPerSecond = true;
@@ -343,7 +399,10 @@ export function useMap() {
     const saved = savedBaseMap();
     if (saved === "dark" || (saved === "streets" && ONLINE_MAPS)) baseMap.value = saved;
     applyBaseMap();
+    watch(baseOpacity, applyBaseMap);
+    watch(terrainShown, applyTerrain);
     findSatelliteLayer(v);
+    findTerrain(v);
   }
 
   function toggleMode() {
@@ -451,6 +510,9 @@ export function useMap() {
     mapFile,
     reloadSatelliteLayer,
     baseMap,
+    baseOpacity,
+    hasTerrain,
+    terrainShown,
     hover,
     pressed,
     dragging,

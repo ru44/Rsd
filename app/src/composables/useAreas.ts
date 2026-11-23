@@ -5,6 +5,7 @@ import { API_URL, shiftHeld, useMap, type LonLat } from "./useMap";
 import { EDIT_PREFIX, selection } from "./selection";
 import { isDrawTool, tool } from "./tool";
 import { clearHistory, idTracker, record } from "./history";
+import { savedLevel } from "./prefs";
 import {
   SHAPE_LABEL,
   circleOf,
@@ -83,6 +84,8 @@ const draftInfo = ref("");
 const liveMeasure = ref<Stat[]>([]);
 const offline = ref(false);
 const visible = ref(true);
+/** How solid shapes look, from 0 (gone) to 1 (as drawn). */
+const opacity = savedLevel("rsgis.shapesOpacity", 1);
 
 let source: Cesium.CustomDataSource | null = null;
 let hooked = false;
@@ -132,7 +135,8 @@ function drawShape(id: string, kind: ShapeKind, geo: ShapeGeo, color = DEFAULT_C
   if (!entities) return;
   entities.removeById(id);
   const pts = pointsOf(geo);
-  const css = Cesium.Color.fromCssColorString(color);
+  const op = opacity.value;
+  const css = Cesium.Color.fromCssColorString(color).withAlpha(op);
   if (kind === "text") {
     entities.add({
       id,
@@ -142,9 +146,10 @@ function drawShape(id: string, kind: ShapeKind, geo: ShapeGeo, color = DEFAULT_C
         font: "600 15px 'Geist Variable', sans-serif",
         fillColor: css,
         showBackground: true,
-        backgroundColor: INK.withAlpha(0.8),
+        backgroundColor: INK.withAlpha(0.8 * op),
         backgroundPadding: new Cesium.Cartesian2(7, 5),
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
       },
     });
     return;
@@ -156,7 +161,7 @@ function drawShape(id: string, kind: ShapeKind, geo: ShapeGeo, color = DEFAULT_C
         ? undefined
         : {
             hierarchy: new Cesium.PolygonHierarchy(toCartesian(pts)),
-            material: css.withAlpha(0.35),
+            material: css.withAlpha(0.35 * op),
             arcType: arcOf(kind),
             // A volume stands up from its bottom height to its top height.
             ...(vol && { height: vol.floor, extrudedHeight: vol.top, outline: true, outlineColor: css }),
@@ -185,6 +190,7 @@ function dot(id: string, position: Cesium.Cartesian3 | Cesium.CallbackProperty, 
       outlineColor: INK,
       outlineWidth: 2,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
     },
   });
 }
@@ -602,6 +608,11 @@ export function useAreas() {
     watch(visible, (show) => {
       if (source) source.show = show;
     });
+    // The shape being reshaped is drawn again when the reshaping ends.
+    watch(opacity, () => {
+      areas.value.forEach((a) => a.id !== editing?.id && redraw(a));
+      unsaved.value.forEach((u) => drawShape(u.entityId, u.shape, u.geojson, u.color, u.name, volumeOf(u)));
+    });
     watch(selection, (sel) => {
       endEdit();
       if (sel?.kind === "area") beginEdit(sel.id);
@@ -689,6 +700,7 @@ export function useAreas() {
     liveMeasure,
     offline,
     visible,
+    opacity,
     finishDraw,
     load,
     flush,

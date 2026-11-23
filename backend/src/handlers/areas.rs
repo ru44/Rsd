@@ -2,24 +2,33 @@ use axum::{ extract::{ State, Json }, response::IntoResponse, http::StatusCode }
 use deadpool_postgres::Pool;
 use serde::{ Deserialize, Serialize };
 use serde_json::json;
+use utoipa::ToSchema;
 
-#[derive(Deserialize)]
+/// A shape drawn on the map: an area, a line or a text label.
+#[derive(Deserialize, ToSchema)]
 pub struct AreaInput {
+    #[schema(example = "Objective North")]
     name: String,
+    /// A GeoJSON Polygon, LineString or Point (for a text label), in longitude and latitude.
+    #[schema(value_type = Object, example = json!({"type": "Polygon", "coordinates": [[[39.1, 21.5], [39.2, 21.5], [39.2, 21.6], [39.1, 21.5]]]}))]
     geojson: serde_json::Value,
-    // Optional color for the area (e.g. "#00ff00")
+    /// Colour as #rrggbb.
+    #[schema(example = "#7FD4F5")]
     color: Option<String>,
-    // How it was drawn: "polygon", "rect", "circle" or "line".
+    /// How it was drawn: polygon, rect, circle, line, arrow or text.
+    #[schema(example = "polygon")]
     shape: Option<String>,
-    // For a volume: metres above sea level of its bottom and its top.
+    /// For a volume: metres above sea level of its bottom.
     floor_m: Option<f64>,
+    /// For a volume: metres above sea level of its top.
     ceiling_m: Option<f64>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct AreaOutput {
     id: i32,
     name: String,
+    #[schema(value_type = Object, example = json!({"type": "Polygon", "coordinates": [[[39.1, 21.5], [39.2, 21.5], [39.2, 21.6], [39.1, 21.5]]]}))]
     geojson: serde_json::Value,
     color: Option<String>,
     shape: Option<String>,
@@ -27,7 +36,16 @@ pub struct AreaOutput {
     ceiling_m: Option<f64>,
 }
 
-// This function is now robust and won't crash the server.
+#[utoipa::path(
+    get,
+    path = "/api/areas",
+    tag = "Shapes",
+    summary = "Every shape, oldest first",
+    responses(
+        (status = 200, description = "The shapes", body = crate::docs::AreaList),
+        (status = 500, description = "The database could not be reached", body = crate::docs::Status)
+    )
+)]
 pub async fn get_areas(State(pool): State<Pool>) -> impl IntoResponse {
     let client = match pool.get().await {
         Ok(client) => client,
@@ -85,7 +103,18 @@ pub async fn get_areas(State(pool): State<Pool>) -> impl IntoResponse {
     (StatusCode::OK, Json(json!({ "status": "success", "data": areas })))
 }
 
-// The other handlers can also be made more robust, but get_areas is the one failing.
+#[utoipa::path(
+    post,
+    path = "/api/areas",
+    tag = "Shapes",
+    summary = "Add a shape",
+    request_body = AreaInput,
+    responses(
+        (status = 201, description = "The shape as stored, with its id", body = AreaOutput),
+        (status = 400, description = "The GeoJSON is not a geometry this kind of item can have", body = crate::docs::Status),
+        (status = 500, description = "The database could not be reached", body = crate::docs::Status)
+    )
+)]
 pub async fn create_area(
     State(pool): State<Pool>,
     Json(input): Json<AreaInput>
@@ -146,6 +175,15 @@ pub async fn create_area(
     (StatusCode::CREATED, Json(area)).into_response()
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/areas",
+    tag = "Shapes",
+    summary = "Delete every shape",
+    responses(
+        (status = 200, description = "All gone", body = crate::docs::Status)
+    )
+)]
 pub async fn delete_areas(State(pool): State<Pool>) -> impl IntoResponse {
     let client = pool.get().await.unwrap();
     client.execute("DELETE FROM areas", &[]).await.unwrap();
@@ -156,9 +194,10 @@ pub async fn delete_areas(State(pool): State<Pool>) -> impl IntoResponse {
 }
 
 /// Fields a client may change on an area. Anything left out stays as it is.
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct AreaPatch {
     name: Option<String>,
+    #[schema(value_type = Object, example = json!({"type": "Polygon", "coordinates": [[[39.1, 21.5], [39.2, 21.5], [39.2, 21.6], [39.1, 21.5]]]}))]
     geojson: Option<serde_json::Value>,
     color: Option<String>,
     floor_m: Option<f64>,
@@ -169,7 +208,19 @@ fn error(status: StatusCode, message: String) -> axum::response::Response {
     (status, Json(json!({ "status": "error", "message": message }))).into_response()
 }
 
-/// PUT /api/areas/{id}: change one area's name, shape or colour.
+#[utoipa::path(
+    put,
+    path = "/api/areas/{id}",
+    tag = "Shapes",
+    summary = "Change a shape's name, outline, colour or heights",
+    params(("id" = i32, Path, description = "The id the server gave it")),
+    request_body = AreaPatch,
+    responses(
+        (status = 200, description = "The shape as it is now", body = AreaOutput),
+        (status = 400, description = "The GeoJSON is not a geometry this kind of item can have", body = crate::docs::Status),
+        (status = 404, description = "There is nothing with that id", body = crate::docs::Status)
+    )
+)]
 pub async fn update_area(
     State(pool): State<Pool>,
     axum::extract::Path(id): axum::extract::Path<i32>,
@@ -217,7 +268,17 @@ pub async fn update_area(
     (StatusCode::OK, Json(area)).into_response()
 }
 
-/// DELETE /api/areas/{id}: remove one area.
+#[utoipa::path(
+    delete,
+    path = "/api/areas/{id}",
+    tag = "Shapes",
+    summary = "Delete one shape",
+    params(("id" = i32, Path, description = "The id the server gave it")),
+    responses(
+        (status = 200, description = "Deleted", body = crate::docs::Status),
+        (status = 404, description = "There is nothing with that id", body = crate::docs::Status)
+    )
+)]
 pub async fn delete_area(
     State(pool): State<Pool>,
     axum::extract::Path(id): axum::extract::Path<i32>
